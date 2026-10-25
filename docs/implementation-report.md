@@ -43,3 +43,8 @@ Configure Supabase and OpenAI, restart/rebuild, then execute the 13-step Guide a
 - As variáveis Supabase e `MYN_AI_KEY` estão presentes. O Supabase continua com CONNECT 403 pela política de rede. A inclusão do hostname exato foi salva no rascunho, mas isso não aplica a política à máquina atual. A migração remota permanece não verificada.
 - A listagem de modelos OpenAI respondeu; uma chamada real à Responses API com screenshot público falhou com HTTP 401 e código `invalid_api_key`. Nenhuma resposta visual foi fabricada. Atualize a credencial existente com uma chave válida nas configurações seguras; não crie um segundo binding.
 - `scripts/verify-vision.mjs` é uma verificação manual opcional com chamada paga, fora do CI. Inicie o servidor e execute com `node --use-env-proxy --use-system-ca scripts/verify-vision.mjs`; neste ambiente use também `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium`. Ela captura somente a página pública `/try/guide` e verifica orientação estruturada sobre o botão visível.
+
+
+## Mentor bug fix (latest)
+
+See `mentor-fix.md` for the current behavior, setup requirement and test scope. The latest validation completed 59 unit/integration/database tests and 15 Playwright checks successfully, with production build and TypeScript checks passing. The new hands-free mentor loop supersedes the earlier description of manual-only voice. It remains a turn-based transcription/reasoning/speech pipeline, not a WebRTC Realtime connection. Real Supabase tables are still missing (PGRST205), so the complete authenticated production acceptance journey remains blocked on database initialization and real provider credentials/credits. No remote migration or production deployment success is claimed by these local test results.

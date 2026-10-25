@@ -2,7 +2,7 @@
 
 ## Supabase
 
-1. Create a Supabase project. Apply `supabase/migrations/0001_initial.sql` using the SQL editor or your Supabase migration workflow. The migration is for a fresh database and should run once, not on every application startup.
+1. Create a Supabase project. Apply the combined `public/setup/myn-database.sql` in the SQL Editor, or run both numbered files in `supabase/migrations/` through your migration workflow. The bootstrap is repeatable and backfills existing users without deleting conversations. Existing installations need `0002_mentor_transcripts.sql` for the mentor endpoints. Do not run migrations on every application startup.
 2. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the browser-safe publishable/anon key). Public variables must be present **at build time**. Rebuild after changing them.
 3. Enable email/password authentication and email verification. Set Site URL and allow `/auth/callback` redirect URLs for your production origin and local development.
 4. Configure production SMTP. The browser login uses password authentication; For Google OAuth, enable the Google provider in Supabase, configure its OAuth credentials and redirect URI, then set `NEXT_PUBLIC_ENABLE_GOOGLE=true` before building.
@@ -42,3 +42,7 @@ Run credential-backed signup/verification/recovery, cross-account RLS checks on 
 ## Diagnóstico desta instância
 
 Os valores de Supabase e OpenAI já estão presentes. A autenticação da Responses API recusou a chave existente com `401 invalid_api_key`; corrija o valor de `MYN_AI_KEY` em configurações seguras. O projeto Supabase foi identificado como `mjeualrxkgqdffwidiuv.supabase.co`; sua inclusão foi salva no rascunho de rede preservando `api.openai.com`. Revise e salve a alteração de rede no ambiente para aplicá-la e depois reteste a conexão. Salvar o rascunho pela ferramenta não aplica a política nem publica o ambiente. Não foi possível consultar ou migrar esse banco remoto.
+
+## Mentor update
+
+See `mentor-fix.md`. The application now supports a hands-free, pause-detected voice conversation loop with automatic language detection. The root bug in the shown dashboard was confirmed as missing Supabase tables, not a screen capture failure. A new website deployment does not install the database. Apply the combined bootstrap before testing `/app/guide`; `/try` remains a device-only test. For one-time automated installation, a secure Supabase Management API token is required. No administrative token was available during code validation.

@@ -2,6 +2,13 @@ import { identity } from "@/lib/auth/server";
 import { failure, sameOrigin } from "@/lib/security";
 import { provider } from "@/lib/ai/provider";
 import { requestSchema, verifiedSteps } from "@/lib/guide";
+import {
+  activeSession,
+  reserve,
+  context,
+  saveQuestion,
+} from "@/lib/sessions/server";
+import { databaseError, publicError } from "@/lib/errors";
 export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
@@ -10,58 +17,19 @@ export async function POST(req: Request) {
       throw new Error("Payload too large");
     const body = requestSchema.parse(await req.json());
     const { client, user } = await identity();
-    const { data: session } = await client
-      .from("sessions")
-      .select("*")
-      .eq("id", body.sessionId)
-      .eq("user_id", user.id)
-      .single();
-    if (
-      !session ||
-      session.status !== "active" ||
-      Date.now() - new Date(session.resumed_at).getTime() > 3600000
-    )
-      throw new Error("Forbidden");
-    const { error: quota } = await client.rpc("reserve_usage", {
-      p_session: session.id,
-      p_kind: "analysis",
-    });
-    if (quota) throw new Error("Monthly or request rate limit reached");
-    const { data: messages } = await client
-      .from("messages")
-      .select("role,content")
-      .eq("session_id", session.id)
-      .order("created_at", { ascending: false })
-      .limit(16);
-    let agent;
-    if (session.agent_id) {
-      const { data } = await client
-        .from("agents")
-        .select("instructions")
-        .eq("id", session.agent_id)
-        .single();
-      agent = data?.instructions;
-    }
-    const { data: summary } = await client
-      .from("session_summaries")
-      .select("summary")
-      .eq("session_id", session.id)
-      .maybeSingle();
-    const { guidance, tokens } = await provider.analyze({
-      ...body,
-      history: [
-        { role: "user", content: "Objective: " + session.objective },
-        {
-          role: "assistant",
-          content:
-            "Previous summary (not a current observation): " +
-            (summary?.summary || ""),
-        },
-        ...(messages || []).reverse(),
-      ],
-      agent,
-      mode: session.mode,
-    });
+    const session = await activeSession(client, user.id, body.sessionId);
+    const turnId = body.turnId || crypto.randomUUID();
+    await saveQuestion(client, session.id, turnId, body.message);
+    await reserve(client, session.id, "analysis");
+    const memory = await context(client, session);
+    const { guidance, tokens } = await provider.analyze(
+      {
+        ...body,
+        ...memory,
+        mode: session.mode,
+      },
+      { signal: req.signal },
+    );
     guidance.steps = verifiedSteps(guidance);
     const { error } = await client.rpc("save_exchange", {
       p_session: session.id,
@@ -70,12 +38,22 @@ export async function POST(req: Request) {
       p_steps: guidance.steps,
       p_summary: guidance.summary,
       p_tokens: tokens,
+      p_turn: turnId,
     });
-    if (error) throw error;
-    return Response.json(guidance, {
-      headers: { "Cache-Control": "no-store" },
-    });
-  } catch (error) {
-    return failure(error);
+    let warning;
+    if (error) {
+      try {
+        databaseError(error);
+      } catch (e) {
+        const safe = publicError(e);
+        warning = { code: safe.code, message: safe.message };
+      }
+    }
+    return Response.json(
+      { ...guidance, turnId, saved: !error, ...(warning ? { warning } : {}) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (e) {
+    return failure(e);
   }
 }

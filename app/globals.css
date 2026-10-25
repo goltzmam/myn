@@ -1529,3 +1529,56 @@ small {
 .task-panel > .button {
   margin-top: 20px;
 }
+.mentor-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mentor-toolbar > div {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mentor-toolbar > div > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mentor-toolbar > label {
+  font-size: 11px;
+  margin-left: auto;
+}
+.mentor-toolbar > small {
+  width: 100%;
+}
+.mentor-audio {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+}
+.transcript-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 15px 0;
+}
+.speech-toggle > label {
+  flex-direction: row;
+  align-items: center;
+}
+.notice p {
+  margin: 8px 0;
+}
+.surface ol {
+  padding-left: 20px;
+}
+.surface ol > li {
+  margin: 16px 0;
+}
+.surface ol a {
+  color: var(--accent);
+}

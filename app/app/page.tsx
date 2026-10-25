@@ -1,6 +1,7 @@
 import { configured } from "@/lib/config";
 import { redirect } from "next/navigation";
 import { identity } from "@/lib/auth/server";
+import Link from "next/link";
 import { Dashboard } from "@/components/dashboard";
 export default async function Home() {
   if (!configured()) redirect("/login?setup=1");
@@ -32,11 +33,21 @@ export default async function Home() {
           ).toISOString(),
         ),
     ]);
-  if (error || usageError)
-    return (
-      <div className="notice">
-        Database unavailable. Apply the Supabase migration and refresh.
-      </div>
-    );
-  return <Dashboard sessions={sessions || []} usage={count || 0} />;
+  return (
+    <>
+      {(error || usageError) && (
+        <section className="notice" role="status">
+          <strong>Seu histórico ainda não está disponível.</strong>
+          <p>
+            Conclua a configuração inicial para conversar com o mentor e guardar
+            suas sessões.
+          </p>
+          <Link className="button secondary" href="/app/setup">
+            Ativar mentor e histórico
+          </Link>
+        </section>
+      )}
+      <Dashboard sessions={sessions || []} usage={count || 0} />
+    </>
+  );
 }

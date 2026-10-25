@@ -95,3 +95,26 @@ test("dashboard also redirects without credentials", async ({ page }) => {
   await page.goto("/app");
   await expect(page).toHaveURL(/\/login/);
 });
+test("database setup script is downloadable and includes private transcript storage", async ({
+  request,
+}) => {
+  const r = await request.get("/setup/myn-database.sql");
+  expect(r.status()).toBe(200);
+  const sql = await r.text();
+  expect(sql).toContain("create table if not exists public.sessions");
+  expect(sql).toContain("save_question");
+  expect(sql).toContain("message_turn_role");
+  expect(sql).toContain("enable row level security");
+});
+test("session creation and speech remain protected without authentication", async ({
+  request,
+}) => {
+  const session = await request.post("/api/sessions", {
+    data: { mode: "guide", objective: "Learn" },
+  });
+  expect(session.status()).toBe(401);
+  const audio = await request.post("/api/audio", {
+    data: { sessionId: "33333333-3333-4333-8333-333333333333", text: "Hello" },
+  });
+  expect(audio.status()).toBe(401);
+});

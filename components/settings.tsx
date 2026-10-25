@@ -109,8 +109,9 @@ export function Settings() {
       <section className="surface">
         <h2>Audio</h2>
         <p>
-          Voice uses an on-demand pipeline: record → transcribe → reason →
-          speak. Continuous real-time audio is not available in this version.
+          Open Guide and choose “Talk to your mentor” for hands-free questions
+          and spoken answers. Listening pauses during each reply to avoid
+          feedback. Set the conversation language to auto to follow your voice.
         </p>
         <Button variant="secondary" onClick={testMic}>
           Test microphone permission

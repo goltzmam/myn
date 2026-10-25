@@ -34,7 +34,9 @@ export function Records({
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [query, setQuery] = useState(""),
-    [messages, setMessages] = useState<{ role: string; content: string }[]>([]),
+    [messages, setMessages] = useState<
+      { role: string; content: string; created_at?: string }[]
+    >([]),
     [summary, setSummary] = useState("");
   async function load() {
     try {
@@ -55,7 +57,7 @@ export function Records({
           await Promise.all([
             client
               .from("messages")
-              .select("role,content")
+              .select("role,content,created_at")
               .eq("session_id", id)
               .order("created_at"),
             client
@@ -255,12 +257,20 @@ export function Records({
               </div>
               {messages.map((m, i) => (
                 <div className="message" key={i}>
-                  <span>{m.role}</span>
-                  <p>{m.content}</p>
+                  <span>
+                    {m.role}
+                    {m.created_at && (
+                      <time dateTime={m.created_at}>
+                        {" "}
+                        · {new Date(m.created_at).toLocaleString()}
+                      </time>
+                    )}
+                  </span>
+                  <p dir="auto">{m.content}</p>
                 </div>
               ))}
               <h3>Session summary</h3>
-              <p className="prewrap">
+              <p className="prewrap" dir="auto">
                 {summary || "No summary generated yet."}
               </p>
             </>

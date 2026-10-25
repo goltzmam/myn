@@ -48,4 +48,14 @@ Os comandos `dev` e `start` usam as opções nativas do Node 24 para respeitar o
 - `supabase/migrations/`: PostgreSQL schema, RLS, atomic quota reservations and billing event processing.
 - `tests/`: policy and PostgreSQL/PGlite tests; Playwright public-flow checks.
 
-Screenshots are analyzed on demand only, never inserted into the database. Screen sharing never starts without a user click and browser permission. Voice is a record/transcribe/reason/speak pipeline, not continuous real-time audio. Messages and summaries remain until deletion; there is no automatic retention job. Quota reservations count failed provider calls as well as successful calls. Provider costs are not inferred from unverified token pricing.
+Screenshots are analyzed on demand only, never inserted into the database. Screen sharing never starts without a user click and browser permission. Voice uses a hands-free, pause-detected record/transcribe/reason/speak loop. Listening resumes after speech playback and pauses during replies to avoid feedback; this is not a WebRTC Realtime connection. Conversation language defaults to auto detection and can be set to a language code independently of the interface. Messages and summaries remain until deletion; there is no automatic retention job. Quota reservations count failed provider calls as well as successful calls. Provider costs are not inferred from unverified token pricing.
+
+## Ativar mentor, voz e histórico
+
+Se o dashboard informa que o histórico não está disponível, as tabelas/RPCs do banco ainda não foram instaladas. Abra `/app/setup` na aplicação e siga as instruções para o proprietário executar `public/setup/myn-database.sql` no SQL Editor do Supabase. O bootstrap é repetível e inclui ambas as migrações. Ele preserva conversas e configurações existentes e cria perfis para usuários que se cadastraram antes da instalação.
+
+Para instalação por automação, disponibilize `SUPABASE_ACCESS_TOKEN` com destino HTTPS `api.supabase.com` em configurações seguras e execute `npm run db:setup`. Esse token é administrativo e não deve ser configurado com prefixo público nem colocado no chat ou Git. Um token de serviço/anon não substitui o Management API token para executar DDL.
+
+Na Vercel, configure também `MYN_AI_KEY` e as duas variáveis públicas de Supabase. As configurações do ambiente de desenvolvimento não são copiadas automaticamente para a Vercel. A chave OpenAI precisa ser válida e ter créditos/permissões de modelos. Faça redeploy após alterar variáveis.
+
+Depois do deploy e do banco instalado, entre na conta, abra **Guide** em `/app/guide` e selecione **Conversar com mentor / Talk to your mentor**. A área `/try` continua sendo somente um teste local de dispositivos e não conversa com a IA.

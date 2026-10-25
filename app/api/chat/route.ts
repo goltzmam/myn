@@ -1,6 +1,13 @@
 import { identity } from "@/lib/auth/server";
 import { openai } from "@/lib/ai/provider";
 import { requestSchema, policy } from "@/lib/guide";
+import {
+  activeSession,
+  reserve,
+  context,
+  saveQuestion,
+} from "@/lib/sessions/server";
+import { databaseError, publicError } from "@/lib/errors";
 import { sameOrigin, failure } from "@/lib/security";
 export const maxDuration = 60;
 export async function POST(req: Request) {
@@ -8,44 +15,12 @@ export async function POST(req: Request) {
     sameOrigin(req);
     const body = requestSchema.omit({ image: true }).parse(await req.json());
     const { client, user } = await identity();
-    const { data: session } = await client
-      .from("sessions")
-      .select("*")
-      .eq("id", body.sessionId)
-      .eq("user_id", user.id)
-      .single();
-    if (
-      !session ||
-      session.mode !== "wake" ||
-      session.status !== "active" ||
-      Date.now() - new Date(session.resumed_at).getTime() > 3600000
-    )
-      throw new Error("Forbidden");
-    const { error } = await client.rpc("reserve_usage", {
-      p_session: session.id,
-      p_kind: "analysis",
-    });
-    if (error) throw new Error("Monthly or request rate limit reached");
-    const { data: history } = await client
-      .from("messages")
-      .select("role,content")
-      .eq("session_id", session.id)
-      .order("created_at", { ascending: false })
-      .limit(16);
-    const { data: summary } = await client
-      .from("session_summaries")
-      .select("summary")
-      .eq("session_id", session.id)
-      .maybeSingle();
-    let agent = "";
-    if (session.agent_id) {
-      const { data } = await client
-        .from("agents")
-        .select("instructions")
-        .eq("id", session.agent_id)
-        .single();
-      agent = data?.instructions || "";
-    }
+    const session = await activeSession(client, user.id, body.sessionId);
+    if (session.mode !== "wake") throw new Error("Forbidden");
+    const turnId = body.turnId || crypto.randomUUID();
+    await saveQuestion(client, session.id, turnId, body.message);
+    await reserve(client, session.id, "analysis");
+    const memory = await context(client, session);
     const stream = await openai().responses.create(
       {
         model: process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini",
@@ -65,9 +40,8 @@ export async function POST(req: Request) {
             content: JSON.stringify({
               language: body.language,
               objective: session.objective,
-              previousSummary: summary?.summary,
-              agent,
-              history: (history || []).reverse(),
+              agent: memory.agent,
+              history: memory.history,
             }),
           },
           { role: "user", content: body.message },
@@ -101,14 +75,26 @@ export async function POST(req: Request) {
               p_steps: [],
               p_summary: reply.slice(0, 6000),
               p_tokens: tokens,
+              p_turn: turnId,
             });
-            if (error) throw error;
-            emit({ done: true });
-          } catch {
+            let warning;
+            if (error) {
+              try {
+                databaseError(error);
+              } catch (problem) {
+                const safe = publicError(problem);
+                warning = { code: safe.code, message: safe.message };
+              }
+            }
             emit({
-              error:
-                "Response interrupted or could not be saved. Retry before leaving this session.",
+              done: true,
+              saved: !error,
+              turnId,
+              ...(warning ? { warning } : {}),
             });
+          } catch (error) {
+            const e = publicError(error);
+            emit({ error: e.message, code: e.code });
           } finally {
             controller.close();
           }

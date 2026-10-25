@@ -12,6 +12,13 @@ beforeAll(async () => {
   );
   await db.exec(readFileSync("supabase/migrations/0001_initial.sql", "utf8"));
   await db.exec(
+    readFileSync("supabase/migrations/0002_mentor_transcripts.sql", "utf8"),
+  );
+  await db.exec(readFileSync("supabase/migrations/0001_initial.sql", "utf8"));
+  await db.exec(
+    readFileSync("supabase/migrations/0002_mentor_transcripts.sql", "utf8"),
+  );
+  await db.exec(
     `grant usage on schema public,auth to authenticated;grant select,insert,update,delete on all tables in schema public to authenticated;insert into auth.users(id) values('${alice}'),('${bob}'); insert into sessions(id,user_id,mode,title) values('${session}','${alice}','guide','Database setup');set role authenticated;select set_config('request.jwt.claim.sub','${alice}',false);`,
   );
 });
@@ -56,8 +63,71 @@ it("atomically persists messages, plan and summary", async () => {
   );
   expect(steps.rows[0].status).toBe("pending");
 });
+it("bootstrap is repeatable without duplicating plans or built-in agents", async () => {
+  expect((await db.query("select * from plans")).rows).toHaveLength(4);
+  expect((await db.query("select * from agents")).rows).toHaveLength(5);
+});
+it("keeps a multilingual user transcript even if no AI answer arrives", async () => {
+  const turn = crypto.randomUUID();
+  await db.query("select save_question($1,$2,$3)", [
+    session,
+    turn,
+    "كيف يمكنني حل هذه المشكلة؟",
+  ]);
+  const q = await db.query<{ content: string }>(
+    "select content from messages where turn_id=$1",
+    [turn],
+  );
+  expect(q.rows[0].content).toBe("كيف يمكنني حل هذه المشكلة؟");
+});
+it("saves both sides of a turn idempotently and preserves summary progress", async () => {
+  const turn = crypto.randomUUID();
+  for (let i = 0; i < 2; i++)
+    await db.query("select save_exchange($1,$2,$3,$4,$5,$6,$7)", [
+      session,
+      "この画面を説明して",
+      "設定を開きましょう",
+      JSON.stringify([
+        {
+          title: "設定を開く",
+          status: "completed",
+          evidence: "User explicitly confirmed opening settings",
+        },
+      ]),
+      "設定を開きました",
+      30,
+      turn,
+    ]);
+  expect(
+    (await db.query("select * from messages where turn_id=$1", [turn])).rows,
+  ).toHaveLength(2);
+  const summary = await db.query<{ completed_tasks: string[] }>(
+    "select completed_tasks from session_summaries where session_id=$1",
+    [session],
+  );
+  expect(summary.rows[0].completed_tasks).toEqual(["設定を開く"]);
+});
+it("rejects transcript writes by another user", async () => {
+  await db.exec(`select set_config('request.jwt.claim.sub','${bob}',false)`);
+  await expect(
+    db.query("select save_question($1,$2,$3)", [
+      session,
+      crypto.randomUUID(),
+      "Other account",
+    ]),
+  ).rejects.toThrow("Forbidden");
+  await db.exec(`select set_config('request.jwt.claim.sub','${alice}',false)`);
+});
+it("separates audio and analysis rate limits for natural voice turns", async () => {
+  for (let i = 0; i < 12; i++)
+    await db.query("select reserve_usage($1,$2)", [session, "audio"]);
+  expect(
+    (await db.query("select * from usage_events where event_type='audio'"))
+      .rows,
+  ).toHaveLength(12);
+});
 it("enforces rate limit in persistent database", async () => {
-  for (let i = 0; i < 10; i++)
+  for (let i = 0; i < 20; i++)
     await db.query("select reserve_usage($1,$2)", [session, "analysis"]);
   await expect(
     db.query("select reserve_usage($1,$2)", [session, "analysis"]),
