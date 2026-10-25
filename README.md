@@ -1,0 +1,51 @@
+# myn.
+
+The AI that shows you where to click.
+
+A new Next.js application with Supabase accounts and private session storage, OpenAI visual guidance and voice, and Stripe subscription integrations. External services must be configured before the authenticated experience can be exercised. This is an initial implementation, not the complete production product specified in `docs/specification.md`.
+
+## Local development
+
+Use Node.js 24 and npm 11 (see `.nvmrc`).
+
+```sh
+cd /workspace/myn
+npm ci --cache /tmp/myn-npm
+cp .env.example .env.local
+# Fill configuration values securely, then:
+npm run dev
+```
+
+Do not overwrite an existing `.env.local`. No credentials are committed. Open `docs/deployment.md` for service setup and `docs/implementation-report.md` for validation evidence and missing capabilities.
+
+```sh
+npm test
+npm run typecheck
+npm run build
+npm run start
+# In another terminal; Chromium is already available in this cloud machine:
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
+```
+
+Outside this cloud image, install the browser with `npx playwright install --with-deps chromium` and omit the executable override. Browser downloads may require `cdn.playwright.dev` and its redirect destinations in your network settings.
+
+## Testar a interface agora
+
+Na página inicial, clique em **Experimentar interface**, ou abra a rota `/try` na aplicação. O dashboard público permite navegar sem conta. Em `/try/guide`, compartilhe uma tela com permissão explícita e teste o microfone, com reprodução e descarte local do áudio. Esses testes não enviam mídia ao servidor, não criam sessões e não simulam respostas de IA.
+
+Para testar no seu computador, extraia o pacote, execute `npm ci` e `npm run dev` com Node.js 24. Abra a aplicação na porta 3000 e use o botão Experimentar interface. A área de testes funciona sem `.env.local`; as rotas autenticadas continuam protegidas. O compartilhamento de tela exige desktop e contexto seguro.
+
+Os comandos `dev` e `start` usam as opções nativas do Node 24 para respeitar o proxy e os certificados do sistema, sem desabilitar TLS. A presença de variáveis não garante que suas credenciais ou serviços funcionem.
+
+## Architecture
+
+- `app/`: App Router pages and authenticated server APIs.
+- `components/`: landing, dashboard, session controls, history, agents, account and billing.
+- `lib/ai/`: replaceable provider interface; OpenAI Responses structured visual analysis and streaming Wake text.
+- `lib/vision/`: local compressed screen-frame extraction, change detection utility.
+- `lib/auth/`: Supabase SSR and browser clients; `proxy.ts` refreshes cookies.
+- `lib/billing/`: billing adapter and Stripe integration.
+- `supabase/migrations/`: PostgreSQL schema, RLS, atomic quota reservations and billing event processing.
+- `tests/`: policy and PostgreSQL/PGlite tests; Playwright public-flow checks.
+
+Screenshots are analyzed on demand only, never inserted into the database. Screen sharing never starts without a user click and browser permission. Voice is a record/transcribe/reason/speak pipeline, not continuous real-time audio. Messages and summaries remain until deletion; there is no automatic retention job. Quota reservations count failed provider calls as well as successful calls. Provider costs are not inferred from unverified token pricing.
