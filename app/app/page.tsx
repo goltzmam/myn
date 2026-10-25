@@ -11,31 +11,15 @@ export default async function Home() {
   } catch {
     redirect("/login");
   }
-  const { client, user } = auth;
-  const [{ data: sessions, error }, { count, error: usageError }] =
-    await Promise.all([
-      client
-        .from("sessions")
-        .select("id,title,mode,started_at")
-        .order("started_at", { ascending: false })
-        .limit(3),
-      client
-        .from("usage_events")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .in("event_type", ["analysis", "audio"])
-        .gte(
-          "created_at",
-          new Date(
-            new Date().getFullYear(),
-            new Date().getMonth(),
-            1,
-          ).toISOString(),
-        ),
-    ]);
+  const { client } = auth;
+  const { data: sessions, error } = await client
+    .from("sessions")
+    .select("id,title,mode,started_at")
+    .order("started_at", { ascending: false })
+    .limit(4);
   return (
     <>
-      {(error || usageError) && (
+      {error && (
         <section className="notice" role="status">
           <strong>Seu histórico ainda não está disponível.</strong>
           <p>
@@ -47,7 +31,7 @@ export default async function Home() {
           </Link>
         </section>
       )}
-      <Dashboard sessions={sessions || []} usage={count || 0} />
+      <Dashboard sessions={sessions || []} />
     </>
   );
 }

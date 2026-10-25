@@ -124,14 +124,16 @@ export function Shell({
             </button>
             <span>{title}</span>
           </div>
-          <button
-            className="new-conversation"
-            title={pt ? "Nova conversa" : "New conversation"}
-            onClick={() => router.push(base + "/elo?new=" + Date.now())}
-          >
-            <Plus size={17} />
-            <span>{pt ? "Nova conversa" : "New conversation"}</span>
-          </button>
+          {pathname !== base && (
+            <button
+              className="new-conversation"
+              title={pt ? "Nova conversa" : "New conversation"}
+              onClick={() => router.push(base + "/elo?new=" + Date.now())}
+            >
+              <Plus size={17} />
+              <span>{pt ? "Nova conversa" : "New conversation"}</span>
+            </button>
+          )}
         </header>
         <main className="app-content">
           {preview && (

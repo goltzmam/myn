@@ -4,10 +4,10 @@
 
 - Primary navigation: Home, Elo, Agents. Settings stays at the bottom.
 - Elo unifies the previous Wake/Guide/Live entry points. One composer provides text, voice and screen controls; language and playback preferences are tucked away.
-- Home has one composer, optional starting suggestions and actual recent conversations. No invented history, engagement counters or fabricated responses.
+- Home is a return hub: welcome, one entry to Elo, actual recent conversations, and links to agents and history. Conversation input, microphone and screen controls live only in Elo. Home no longer duplicates the conversation experience. No invented history, engagement counters or fabricated responses.
 - History and subscription are nested in Settings alongside account, voice/language and privacy. Old conversation URLs continue to resolve, and existing sessions of all three stored modes can resume.
 - Removed workspace labels, privacy badges, mode cards, upgrade banners and AI marketing copy from the application shell. Product metadata and landing copy were aligned.
-- Home drafts are passed through one-time same-origin session storage, not placed in URLs. Arbitrary incoming URL text never auto-submits a paid request.
+- Legacy one-time conversation handoffs remain supported without putting private text in URLs. Arbitrary incoming URL text never auto-submits a paid request. The new Home does not collect a draft.
 - Mobile sidebar has an explicit open/close action. Controls retain names for screen readers and keyboard navigation; reduced-motion preferences remain respected.
 - Subscription checkout and billing portal controls are unavailable when their payment configuration is missing; no live charges were enabled.
 
@@ -40,3 +40,9 @@ An actual OpenAI visual inference check still returned HTTP 401 `invalid_api_key
 Stripe account credentials and price IDs were not available. No checkout, charge or billing webhook was claimed as live-verified. They remain separate deployment configuration; no secret values are invented.
 
 The production domain currently has a Vercel authentication gate. A GitHub push can trigger deployment, but deployment completion and the owner’s Vercel session are not available through the tools in this conversation.
+
+## Home / Elo separation
+
+Home now uses a left-aligned return-hub layout with an Elo invitation, real session continuation and quieter navigation shortcuts. The duplicate text composer, microphone, screen-sharing shortcut and starter prompts were removed from Home. The header new-conversation action appears outside Home, where it is useful. Elo remains the focused conversation canvas. Home fetches only the data it displays.
+
+Validation: 66 unit/integration/database tests passed; 20 browser tests passed; production build and TypeScript checks passed. New checks ensure Home has no conversation input, stored sessions resume the correct ID, and mobile reduced-motion settings preserve the sidebar's essential offscreen layout. Desktop and mobile visual captures were inspected. This change does not alter database schema or provider credentials.

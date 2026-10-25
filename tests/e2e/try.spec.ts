@@ -8,8 +8,8 @@ test("visitor can open dashboard and Guide without an account", async ({
     .click();
   await expect(page).toHaveURL("/try");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await page.getByRole("button", { name: "Share screen", exact: true }).click();
-  await expect(page).toHaveURL(/\/try\/elo\?intent=screen/);
+  await page.getByRole("link", { name: "Open Elo", exact: true }).click();
+  await expect(page).toHaveURL("/try/elo");
   await expect(
     page.getByRole("button", { name: "Compartilhar tela", exact: true }),
   ).toBeVisible();
@@ -175,16 +175,25 @@ test("history and subscription live inside settings", async ({ page }) => {
     .click();
   await expect(page).toHaveURL("/try/settings/billing");
 });
-test("Home keeps a typed draft out of the address bar", async ({ page }) => {
+test("Home is a return hub and delegates conversation controls to Elo", async ({
+  page,
+}) => {
   await page.goto("/try");
-  await page
-    .getByRole("textbox", { name: "What’s on your mind?" })
-    .fill("A personal question");
-  await page
-    .getByRole("button", { name: "Start conversation", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/try\/elo\?draft=/);
-  expect(page.url()).not.toContain("personal");
+  await expect(
+    page.getByRole("heading", { name: "Welcome back.", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Talk by voice", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Share screen", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Open Elo", exact: true }).click();
+  await expect(page).toHaveURL("/try/elo");
+  await expect(
+    page.getByRole("button", { name: "Compartilhar tela", exact: true }),
+  ).toBeVisible();
 });
 test("the mobile menu opens and closes without horizontal overflow", async ({
   page,
@@ -210,4 +219,17 @@ test("the mobile menu opens and closes without horizontal overflow", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+test("reduced motion preserves the mobile sidebar layout", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/try");
+  await expect(page.locator(".sidebar")).not.toBeInViewport();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await expect(page.locator(".sidebar")).toBeInViewport();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Elo", exact: true })
+    .click();
+  await expect(page.locator(".sidebar")).not.toBeInViewport();
 });

@@ -220,9 +220,7 @@ try {
       });
       const page = await browserContext.newPage();
       await page.goto(origin + "/app");
-      await page
-        .getByRole("textbox", { name: "What’s on your mind?" })
-        .waitFor();
+      await page.getByRole("link", { name: "Open Elo", exact: true }).waitFor();
       await page.screenshot({
         path: "/tmp/myn-home-premium.png",
         fullPage: true,
