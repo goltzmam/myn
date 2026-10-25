@@ -185,7 +185,7 @@ it("synthesizes the real answer in its original language and returns playable au
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toBe("audio/mpeg");
   expect((await response.arrayBuffer()).byteLength).toBe(3);
-  expect(state.speech).toHaveBeenCalledWith(
+  expect(state.speech.mock.calls[0][0]).toMatchObject(
     expect.objectContaining({
       input: guidance.reply,
       instructions: expect.stringContaining("Do not translate"),

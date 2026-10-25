@@ -1,39 +1,47 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Eye,
   Mic,
   Square,
-  MonitorUp,
-  Send,
-  Volume2,
-  ShieldCheck,
-  Check,
+  ArrowUp,
   Pause,
   Play,
-  ScanEye,
-  AudioLines,
-  Radio,
+  Minimize2,
+  Maximize2,
+  Volume2,
+  Globe2,
   Download,
+  Check,
+  LoaderCircle,
+  RefreshCw,
+  SlidersHorizontal,
+  Copy,
 } from "lucide-react";
 import { browserDb } from "@/lib/auth/client";
 import { frame } from "@/lib/vision/capture";
-import { Button } from "@/components/ui/button";
-import { translations } from "@/lib/i18n";
 import { usePreferences } from "@/stores/preferences";
-import { errorMessage } from "@/lib/errors";
+import { translations } from "@/lib/i18n";
+import { conversationLanguageSchema } from "@/lib/guide";
 import { useMentorVoice } from "@/hooks/use-mentor-voice";
+import {
+  request,
+  readConversation,
+  problem,
+  type ConversationProblem,
+} from "@/lib/conversation-client";
 import { playToCompletion } from "@/lib/audio/playback";
-import { conversationLanguageSchema, type Guidance } from "@/lib/guide";
+import { nextSpeechChunk } from "@/lib/audio/sentences";
 type Message = {
   role: "user" | "assistant";
   content: string;
   turn?: string;
   saved?: boolean;
 };
-type Phase = "idle" | "transcribing" | "thinking" | "speaking";
+type Phase = "idle" | "opening" | "transcribing" | "thinking" | "speaking";
 export function Session({
   mode,
   compact = false,
@@ -47,356 +55,404 @@ export function Session({
   draftKey?: string;
   intent?: string;
 }) {
-  const router = useRouter(),
-    { language, speechLanguage, setSpeechLanguage } = usePreferences(),
-    t = translations[language],
-    pt = language === "pt-BR";
+  const { language, speechLanguage, setSpeechLanguage } = usePreferences(),
+    pt = language === "pt-BR",
+    t = translations[language];
   const [messages, setMessages] = useState<Message[]>([]),
     [input, setInput] = useState(initialMessage || ""),
-    [sessionId, setSessionId] = useState<string>(),
-    [busy, setBusy] = useState(false),
     [phase, setPhase] = useState<Phase>("idle"),
-    [error, setError] = useState(""),
-    [errorCode, setErrorCode] = useState(""),
-    [audioError, setAudioError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [sessionId, setSessionId] = useState<string>(),
     [sharing, setSharing] = useState(false),
     [paused, setPaused] = useState(false),
+    [minimized, setMinimized] = useState(false),
+    [error, setError] = useState<ConversationProblem>(),
+    [audioError, setAudioError] = useState(""),
     [speak, setSpeak] = useState(!compact),
-    [guidance, setGuidance] = useState<Guidance>(),
     [audioUrl, setAudioUrl] = useState<string>(),
     [lastReply, setLastReply] = useState(""),
-    [saved, setSaved] = useState(true);
+    [notice, setNotice] = useState("");
   const video = useRef<HTMLVideoElement>(null),
-    screen = useRef<MediaStream>(null),
-    audio = useRef<HTMLAudioElement>(null),
+    media = useRef<MediaStream>(null),
+    player = useRef<HTMLAudioElement>(null),
     audioObject = useRef<string>(null),
+    scroll = useRef<HTMLDivElement>(null),
+    followMessages = useRef(true),
+    textarea = useRef<HTMLTextAreaElement>(null),
+    id = useRef<string | undefined>(undefined),
+    idTask = useRef<Promise<string>>(null),
     abort = useRef<AbortController>(null),
+    task = useRef<Promise<void>>(null),
+    locked = useRef(false),
     alive = useRef(true),
-    lock = useRef(false),
-    idRef = useRef<string>(undefined),
-    sessionMode = useRef(mode),
+    speechEpoch = useRef(0),
+    welcomeDone = useRef(false),
+    voiceWanted = useRef(false),
+    launched = useRef(false),
+    failedTurn = useRef<{ text: string; turnId: string } | undefined>(
+      undefined,
+    ),
     screenState = useRef({ sharing, paused }),
-    options = useRef({ speak, speechLanguage }),
-    sessionPromise = useRef<Promise<string>>(null);
-  const launched = useRef(false);
-  useEffect(() => {
-    if (!compact || !draftKey) return;
-    const timer = setTimeout(() => {
-      if (launched.current) return;
-      const key = "myn-draft:" + draftKey;
-      const draft = sessionStorage.getItem(key);
-      if (!draft) return;
-      sessionStorage.removeItem(key);
-      launched.current = true;
-      void send(draft.slice(0, 4000)).catch(() => {});
-    }, 0);
-    return () => clearTimeout(timer);
-  }, []);
+    options = useRef({ speak, speechLanguage });
   screenState.current = { sharing, paused };
   options.current = { speak, speechLanguage };
-  function showError(e: unknown) {
-    if (e instanceof Error && e.name === "AbortError") return;
-    const problem = e as Error & { code?: string };
-    setErrorCode(problem.code || "");
-    setError(errorMessage(problem.code, problem.message || t.error, language));
+  function report(e: unknown) {
+    if ((e as Error)?.name === "AbortError") return;
+    const data = e as ConversationProblem;
+    setError(
+      data.code
+        ? problem(
+            {
+              code: data.code,
+              error: data.message,
+              questionSaved: data.questionSaved,
+              turnId: data.turnId,
+            },
+            language,
+          )
+        : Object.assign(new Error(data.message || t.error), {
+            code: "REQUEST_FAILED",
+          }),
+    );
   }
-  async function json(url: string, init: RequestInit) {
-    const res = await fetch(url, { ...init, signal: abort.current?.signal });
-    if (!res.ok) {
-      let data;
-      try {
-        data = await res.json();
-      } catch {}
-      const e = Object.assign(new Error(data?.error || t.error), {
-        code: data?.code,
-      });
-      throw e;
-    }
-    return res;
+  async function json(url: string, init: RequestInit, signal: AbortSignal) {
+    return (await request(url, init, language, signal)).json();
   }
-  async function ensureSession(objective: string) {
-    if (idRef.current) return idRef.current;
-    if (sessionPromise.current) return sessionPromise.current;
-    sessionPromise.current = (async () => {
+  async function ensureSession(objective: string, signal: AbortSignal) {
+    if (id.current) return id.current;
+    if (idTask.current) return idTask.current;
+    idTask.current = (async () => {
       const agentId = new URLSearchParams(location.search).get("agent");
-      const res = await json("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          objective,
-          ...(agentId ? { agentId } : {}),
-        }),
-      });
-      const { id } = await res.json();
-      idRef.current = id;
-      setSessionId(id);
-      return id as string;
+      const data = await json(
+        "/api/sessions",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            objective,
+            ...(agentId ? { agentId } : {}),
+          }),
+        },
+        signal,
+      );
+      id.current = data.id;
+      setSessionId(data.id);
+      return data.id as string;
     })();
     try {
-      return await sessionPromise.current;
+      return await idTask.current;
     } finally {
-      sessionPromise.current = null;
+      idTask.current = null;
     }
   }
-  function clearAudio() {
-    audio.current?.pause();
-    if (audioObject.current) URL.revokeObjectURL(audioObject.current);
-    audioObject.current = null;
-  }
-  // Prime the same audio element during a click; retain controls if autoplay is still denied.
   function unlockAudio() {
-    if (!audio.current || audio.current.src) return;
-    const bytes = new Uint8Array(44 + 800);
-    const view = new DataView(bytes.buffer);
-    const text = (offset: number, s: string) =>
-      [...s].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
-    text(0, "RIFF");
-    view.setUint32(4, bytes.length - 8, true);
-    text(8, "WAVE");
-    text(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, 8000, true);
-    view.setUint32(28, 16000, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    text(36, "data");
-    view.setUint32(40, 800, true);
+    if (!player.current || player.current.src) return;
+    const data = new Uint8Array(844),
+      v = new DataView(data.buffer);
+    const word = (i: number, s: string) =>
+      [...s].forEach((c, j) => v.setUint8(i + j, c.charCodeAt(0)));
+    word(0, "RIFF");
+    v.setUint32(4, 836, true);
+    word(8, "WAVE");
+    word(12, "fmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true);
+    v.setUint32(28, 16000, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    word(36, "data");
+    v.setUint32(40, 800, true);
     audioObject.current = URL.createObjectURL(
-      new Blob([bytes], { type: "audio/wav" }),
+      new Blob([data], { type: "audio/wav" }),
     );
-    audio.current.src = audioObject.current;
-    void audio.current.play().catch(() => {});
+    player.current.src = audioObject.current;
+    void player.current.play().catch(() => {});
   }
-  async function say(text: string, id: string) {
-    setAudioError("");
-    try {
-      const response = await json("/api/audio", {
+  async function speakChunk(
+    text: string,
+    session: string,
+    signal: AbortSignal,
+    expectedEpoch = speechEpoch.current,
+  ) {
+    const response = await request(
+      "/api/audio",
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: id,
+          sessionId: session,
           text,
           language: options.current.speechLanguage,
         }),
-      });
-      if (!alive.current) return;
-      clearAudio();
-      const url = URL.createObjectURL(await response.blob());
-      audioObject.current = url;
-      setAudioUrl(url);
-      if (!audio.current) return;
-      audio.current.src = url;
-      setPhase("speaking");
-      setBusy(false);
-      const played = await playToCompletion(audio.current);
-      if (!played) {
-        setAudioError(
-          pt
-            ? "O navegador bloqueou o início automático. Aperte ▶ no player para ouvir."
-            : "Your browser blocked autoplay. Press ▶ in the audio player to listen.",
-        );
-        voice.stop();
-      }
-    } catch (e) {
-      if ((e as Error).name === "AbortError") throw e;
-      const problem = e as Error & { code?: string };
-      setAudioError(
-        errorMessage(problem.code, problem.message || t.error, language),
-      );
+      },
+      language,
+      signal,
+    );
+    const blob = await response.blob();
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    if (expectedEpoch !== speechEpoch.current) return;
+    player.current?.pause();
+    if (audioObject.current) URL.revokeObjectURL(audioObject.current);
+    const url = URL.createObjectURL(blob);
+    audioObject.current = url;
+    setAudioUrl(url);
+    if (!player.current) return;
+    player.current.src = url;
+    setPhase("speaking");
+    const played = await playToCompletion(player.current, signal);
+    if (!played) {
+      voiceWanted.current = false;
       voice.stop();
-    } finally {
-      if (alive.current) setPhase("idle");
+      throw problem(
+        {
+          code: "AUDIO_BLOCKED",
+          error:
+            "Your browser blocked autoplay. Press play to listen, then tap the microphone to continue.",
+        },
+        language,
+      );
     }
   }
-  async function send(question = input) {
-    if (!question.trim()) return;
-    if (lock.current) {
-      if (phase === "speaking") {
-        audio.current?.pause();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      if (lock.current) {
-        setError(
-          pt
-            ? "Aguarde a resposta atual ou interrompa antes de perguntar."
-            : "Please wait for or interrupt the current answer.",
-        );
-        return;
-      }
-    }
-    const lang = conversationLanguageSchema.safeParse(
+  function updateAssistant(turnId: string, content: string, saved = false) {
+    setMessages((items) => {
+      const found = items.some(
+        (m) => m.turn === turnId && m.role === "assistant",
+      );
+      return found
+        ? items.map((m) =>
+            m.turn === turnId && m.role === "assistant"
+              ? { ...m, content, saved }
+              : m,
+          )
+        : [...items, { role: "assistant", content, turn: turnId, saved }];
+    });
+  }
+  async function runTurn(
+    text: string,
+    {
+      welcome = false,
+      turnId = crypto.randomUUID(),
+    }: { welcome?: boolean; turnId?: string } = {},
+  ) {
+    if (locked.current || (!welcome && !text.trim())) return;
+    const selected = conversationLanguageSchema.safeParse(
       options.current.speechLanguage,
     );
-    if (!lang.success) {
+    if (!selected.success) {
       setError(
-        pt
-          ? "Escolha um código de idioma válido, como pt-BR, es ou auto."
-          : "Choose a language code such as en, es, or auto.",
+        problem(
+          {
+            code: "INVALID_REQUEST",
+            error: "Choose a valid conversation language.",
+          },
+          language,
+        ),
       );
       return;
     }
-    lock.current = true;
-    setSaved(false);
+    locked.current = true;
+    followMessages.current = true;
     setBusy(true);
-    setError("");
-    setErrorCode("");
+    setPhase(welcome ? "opening" : "thinking");
+    setError(undefined);
     setAudioError("");
-    setPhase("thinking");
-    audio.current?.pause();
     abort.current = new AbortController();
-    const turnId = crypto.randomUUID();
-    setMessages((m) => [
-      ...m,
-      { role: "user", content: question, turn: turnId, saved: false },
-    ]);
-    setInput("");
+    const signal = abort.current.signal;
+    let received = "",
+      spoken = 0,
+      canSpeak = options.current.speak,
+      speechTail = Promise.resolve(),
+      saved = false,
+      streamedChunks = 0;
+    const epoch = speechEpoch.current;
+    if (!welcome) {
+      setInput("");
+      setMessages((items) =>
+        items.some((m) => m.role === "user" && m.turn === turnId)
+          ? items
+          : [
+              ...items,
+              { role: "user", content: text, turn: turnId, saved: false },
+            ],
+      );
+    }
+    const enqueue = (chunk: string, session: string) => {
+      speechTail = speechTail.then(async () => {
+        if (signal.aborted || !canSpeak || epoch !== speechEpoch.current)
+          return;
+        try {
+          await speakChunk(chunk, session, signal, epoch);
+        } catch (e) {
+          if ((e as Error).name === "AbortError") throw e;
+          canSpeak = false;
+          voiceWanted.current = false;
+          voice.stop();
+          setAudioError((e as Error).message || t.error);
+        }
+      });
+      void speechTail.catch(() => {});
+    };
     try {
-      const id = await ensureSession(question);
+      const session = await ensureSession(
+        welcome ? "Voice conversation" : text,
+        signal,
+      );
       const state = screenState.current;
       const image =
         state.sharing && !state.paused && video.current
           ? await frame(video.current)
           : undefined;
-      let reply = "";
-      if (sessionMode.current === "wake" && !image) {
-        const response = await json("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: id,
-            message: question,
-            language: lang.data,
-            turnId,
-          }),
-        });
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("Streaming unavailable");
-        setMessages((m) => [
-          ...m,
-          { role: "assistant", content: "", turn: turnId, saved: false },
-        ]);
-        let buffer = "",
-          done = false,
-          persisted = false;
-        const decoder = new TextDecoder();
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          buffer += decoder.decode(chunk.value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line) continue;
-            const event = JSON.parse(line);
-            if (event.error)
-              throw Object.assign(new Error(event.error), { code: event.code });
-            if (event.delta) {
-              reply += event.delta;
-              if (alive.current)
-                setMessages((m) =>
-                  m.map((msg) =>
-                    msg.turn === turnId && msg.role === "assistant"
-                      ? { ...msg, content: reply }
-                      : msg,
-                  ),
-                );
-            }
-            if (event.done) {
-              done = true;
-              persisted = event.saved === true;
-              if (event.warning)
-                setError(
-                  errorMessage(
-                    event.warning.code,
-                    event.warning.message,
-                    language,
-                  ),
-                );
-            }
-          }
-        }
-        if (!done) throw new Error("Response interrupted");
-        setSaved(persisted);
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.turn === turnId ? { ...msg, saved: persisted } : msg,
-          ),
+      // All Elo turns, including vision, stream through the same authenticated endpoint.
+      if (!compact && mode === "guide" && !welcome) {
+        const result = await json(
+          "/api/assist",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: session,
+              turnId,
+              message: text,
+              image,
+              language: selected.data,
+            }),
+          },
+          signal,
+        );
+        received = result.reply;
+        saved = result.saved === true;
+        updateAssistant(turnId, received, saved);
+        setMessages((items) =>
+          items.map((m) => (m.turn === turnId ? { ...m, saved } : m)),
         );
       } else {
-        const response = await json("/api/assist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: id,
-            message: question,
-            image,
-            language: lang.data,
-            turnId,
-          }),
-        });
-        const result = await response.json();
-        if (!alive.current) return;
-        reply = result.reply;
-        setGuidance(result);
-        setSaved(result.saved === true);
-        setMessages((m) => [
-          ...m.map((msg) =>
-            msg.turn === turnId
-              ? { ...msg, saved: result.saved === true }
-              : msg,
-          ),
+        const response = await request(
+          "/api/chat",
           {
-            role: "assistant",
-            content: reply,
-            turn: turnId,
-            saved: result.saved === true,
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: session,
+              turnId,
+              message: text,
+              kind: welcome ? "welcome" : "message",
+              image,
+              language: selected.data,
+              locale: navigator.language || language,
+              screenAvailable: !!navigator.mediaDevices?.getDisplayMedia,
+            }),
           },
-        ]);
-        if (result.warning)
-          setError(
-            errorMessage(result.warning.code, result.warning.message, language),
-          );
+          language,
+          signal,
+        );
+        await readConversation(
+          response,
+          (event) => {
+            if (event.accepted && event.questionSaved)
+              setMessages((items) =>
+                items.map((m) =>
+                  m.turn === turnId && m.role === "user"
+                    ? { ...m, saved: true }
+                    : m,
+                ),
+              );
+            if (event.delta) {
+              received += event.delta;
+              updateAssistant(turnId, received);
+              if (canSpeak && streamedChunks < 1) {
+                let chunk = nextSpeechChunk(received.slice(spoken));
+                if (chunk) {
+                  spoken += chunk.length;
+                  streamedChunks++;
+                  enqueue(chunk, session);
+                }
+              }
+            }
+            if (event.done) {
+              saved = event.saved === true;
+              setMessages((items) =>
+                items.map((m) => (m.turn === turnId ? { ...m, saved } : m)),
+              );
+              if (event.warning)
+                setNotice(
+                  problem(
+                    { code: event.warning.code, error: event.warning.message },
+                    language,
+                  ).message,
+                );
+            }
+          },
+          signal,
+          language,
+        );
       }
-      setLastReply(reply);
-      setPhase("idle");
-      if (options.current.speak) await say(reply, id);
+      if (welcome) welcomeDone.current = true;
+      failedTurn.current = undefined;
+      setLastReply(received);
+      if (canSpeak) {
+        let chunk;
+        while ((chunk = nextSpeechChunk(received.slice(spoken), true))) {
+          spoken += chunk.length;
+          enqueue(chunk, session);
+        }
+        await speechTail;
+      }
+      if (!saved)
+        setNotice(
+          pt
+            ? "A resposta não foi confirmada no histórico. Você pode exportar uma cópia."
+            : "This reply was not confirmed saved. You can export a copy.",
+        );
     } catch (e) {
-      if (alive.current) {
-        showError(e);
-        setSaved(false);
+      if ((e as Error).name !== "AbortError") {
+        const failure = e as ConversationProblem;
+        if (failure.questionSaved)
+          setMessages((items) =>
+            items.map((m) =>
+              m.turn === turnId && m.role === "user"
+                ? { ...m, saved: true }
+                : m,
+            ),
+          );
+        if (!welcome) failedTurn.current = { text, turnId };
+        report(e);
       }
       throw e;
     } finally {
-      lock.current = false;
+      locked.current = false;
       if (alive.current) {
         setBusy(false);
         setPhase("idle");
       }
     }
   }
+  function turn(text: string, opts?: { welcome?: boolean; turnId?: string }) {
+    const pending = runTurn(text, opts);
+    task.current = pending;
+    return pending;
+  }
   const voice = useMentorVoice({
     async onUtterance(file) {
-      abort.current = new AbortController();
       setBusy(true);
       setPhase("transcribing");
-      setError("");
+      setError(undefined);
+      abort.current = new AbortController();
+      const signal = abort.current.signal;
       try {
-        const id = await ensureSession("Voice conversation");
-        const form = new FormData();
-        form.append("sessionId", id);
-        form.append("language", options.current.speechLanguage);
-        form.append("audio", file);
-        const response = await json("/api/audio", {
-          method: "POST",
-          body: form,
-        });
-        const { text } = await response.json();
-        setInput(text);
-        setBusy(false);
-        await send(text);
+        const session = await ensureSession("Voice conversation", signal);
+        const data = new FormData();
+        data.set("sessionId", session);
+        data.set("language", options.current.speechLanguage);
+        data.set("audio", file);
+        const result = await json(
+          "/api/audio",
+          { method: "POST", body: data },
+          signal,
+        );
+        await turn(result.text);
       } finally {
         if (alive.current) {
           setBusy(false);
@@ -404,150 +460,234 @@ export function Session({
         }
       }
     },
-    onError: showError,
+    onError: (e) => {
+      voiceWanted.current = false;
+      report(e);
+    },
   });
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      screen.current?.getTracks().forEach((t) => t.stop());
-      audio.current?.pause();
-      if (audioObject.current) URL.revokeObjectURL(audioObject.current);
-      abort.current?.abort();
-    };
-  }, []);
-  useEffect(() => {
-    const id = new URLSearchParams(location.search).get("session");
-    if (!id) return;
-    setBusy(true);
-    void (async () => {
-      try {
-        const client = browserDb();
-        const { data: session, error } = await client
-          .from("sessions")
-          .select("id,mode")
-          .eq("id", id)
-          .single();
-        if (error || !session || (!compact && session.mode !== mode))
-          throw new Error("Session unavailable");
-        const { error: updateError } = await client
-          .from("sessions")
-          .update({
-            status: "active",
-            ended_at: null,
-            resumed_at: new Date().toISOString(),
-          })
-          .eq("id", id);
-        if (updateError) throw updateError;
-        const { data, error: historyError } = await client
-          .from("messages")
-          .select("role,content")
-          .eq("session_id", id)
-          .order("created_at");
-        if (historyError) throw historyError;
-        if (alive.current) {
-          sessionMode.current = session.mode;
-          idRef.current = id;
-          setSessionId(id);
-          setMessages((data || []).map((m) => ({ ...m, saved: true })));
+  function interrupt() {
+    voiceWanted.current = false;
+    voice.stop();
+    abort.current?.abort();
+    player.current?.pause();
+    setPhase("idle");
+  }
+  async function startVoice(continuous = true, skipWelcome = false) {
+    unlockAudio();
+    if (voice.active) {
+      interrupt();
+      return;
+    }
+    abort.current?.abort();
+    player.current?.pause();
+    await task.current?.catch(() => {});
+    setError(undefined);
+    setAudioError("");
+    voiceWanted.current = true;
+    setSpeak(true);
+    options.current.speak = true;
+    abort.current = new AbortController();
+    try {
+      await ensureSession("Voice conversation", abort.current.signal);
+      await voice.start(continuous, async () => {
+        if (compact && !skipWelcome && !welcomeDone.current) {
+          await turn("", { welcome: true });
         }
-      } catch (e) {
-        if (alive.current) showError(e);
-      } finally {
-        if (alive.current) setBusy(false);
-      }
-    })();
-  }, [mode]);
+      });
+    } catch (e) {
+      voiceWanted.current = false;
+      voice.stop();
+      report(e);
+    }
+  }
+  async function submit(text = input) {
+    unlockAudio();
+    const resume = voice.active;
+    voice.stop();
+    player.current?.pause();
+    if (locked.current) {
+      abort.current?.abort();
+      await task.current?.catch(() => {});
+    }
+    try {
+      await turn(text);
+      if (resume && voiceWanted.current) await startVoice(true, true);
+    } catch {
+      voiceWanted.current = false;
+      voice.stop();
+    }
+  }
+  async function changeLanguage(value: string) {
+    speechEpoch.current++;
+    setSpeechLanguage(value);
+    options.current.speechLanguage = value;
+    setNotice(
+      pt
+        ? "O novo idioma será usado na próxima resposta."
+        : "Your next answer will use the new language.",
+    );
+    if (phase === "speaking") {
+      player.current?.pause();
+    }
+  }
   function stopScreen() {
-    screen.current?.getTracks().forEach((t) => t.stop());
-    screen.current = null;
+    media.current?.getTracks().forEach((track) => track.stop());
+    media.current = null;
     screenState.current = { sharing: false, paused: false };
     setSharing(false);
     setPaused(false);
     if (video.current) video.current.srcObject = null;
   }
   async function share() {
-    setError("");
+    setError(undefined);
     try {
       if (!navigator.mediaDevices?.getDisplayMedia)
         throw new Error(
           pt
-            ? "Use um navegador desktop compatível e HTTPS."
-            : "Use a compatible desktop browser and HTTPS.",
+            ? "Este navegador não permite compartilhar a tela. Você pode continuar por voz ou texto."
+            : "This browser cannot share a screen. You can continue by voice or text.",
         );
-      const media = await navigator.mediaDevices.getDisplayMedia({
+      const captureOptions: DisplayMediaStreamOptions & {
+        selfBrowserSurface: string;
+        surfaceSwitching: string;
+      } = {
         video: { frameRate: 2 },
         audio: false,
-      });
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "include",
+      };
+      const stream =
+        await navigator.mediaDevices.getDisplayMedia(captureOptions);
       if (!alive.current) {
-        media.getTracks().forEach((t) => t.stop());
+        stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      screen.current = media;
-      media.getVideoTracks()[0].onended = stopScreen;
+      media.current = stream;
+      stream.getVideoTracks()[0].onended = stopScreen;
       if (video.current) {
-        video.current.srcObject = media;
+        video.current.srcObject = stream;
         await video.current.play();
       }
       screenState.current = { sharing: true, paused: false };
       setSharing(true);
-      setPaused(false);
+      setMinimized((window.visualViewport?.height || window.innerHeight) < 430);
     } catch (e) {
       stopScreen();
-      showError(e);
+      report(e);
     }
   }
-  async function startMentor() {
-    unlockAudio();
-    audio.current?.pause();
-    setError("");
-    setAudioError("");
-    setSpeak(true);
-    options.current.speak = true;
-    if (mode === "guide" && !screenState.current.sharing) await share();
-    if (mode === "guide" && !screenState.current.sharing) return;
-    try {
-      abort.current = new AbortController();
-      await ensureSession("Voice conversation");
-      await voice.start(true);
-    } catch (e) {
-      showError(e);
-    }
-  }
-  function stopMentor() {
-    voice.stop();
-    audio.current?.pause();
-    abort.current?.abort();
-  }
-  async function manualMic() {
-    unlockAudio();
-    audio.current?.pause();
-    if (voice.listening) {
-      voice.finish();
-      return;
-    }
-    if (voice.active) return;
-    try {
-      abort.current = new AbortController();
-      await ensureSession("Voice conversation");
-      await voice.start(false);
-    } catch (e) {
-      showError(e);
-    }
-  }
-  async function end() {
-    stopMentor();
-    stopScreen();
-    if (sessionId) {
-      const { error } = await browserDb()
-        .from("sessions")
-        .update({ status: "completed", ended_at: new Date().toISOString() })
-        .eq("id", sessionId);
-      if (error) {
-        showError(error);
-        return;
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      voiceWanted.current = false;
+      abort.current?.abort();
+      media.current?.getTracks().forEach((t) => t.stop());
+      player.current?.pause();
+      if (audioObject.current) URL.revokeObjectURL(audioObject.current);
+    };
+  }, []);
+  useEffect(() => {
+    const draft = draftKey;
+    const timer = setTimeout(() => {
+      if (!compact || !draft || launched.current) return;
+      const key = "myn-draft:" + draft;
+      const content = sessionStorage.getItem(key);
+      if (content) {
+        sessionStorage.removeItem(key);
+        launched.current = true;
+        void submit(content.slice(0, 4000));
       }
-      router.push("/app/settings/history/" + sessionId);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const session = new URLSearchParams(location.search).get("session");
+    if (!session) return;
+    setBusy(true);
+    void (async () => {
+      try {
+        const client = browserDb();
+        const current = await client
+          .from("sessions")
+          .select("id")
+          .eq("id", session)
+          .single();
+        if (current.error || !current.data)
+          throw new Error("Session unavailable");
+        const updated = await client
+          .from("sessions")
+          .update({
+            status: "active",
+            resumed_at: new Date().toISOString(),
+            ended_at: null,
+          })
+          .eq("id", session);
+        if (updated.error) throw updated.error;
+        const result = await client
+          .from("messages")
+          .select("role,content,turn_id")
+          .eq("session_id", session)
+          .order("created_at", { ascending: false })
+          .limit(150);
+        if (result.error) throw result.error;
+        if (alive.current) {
+          id.current = session;
+          setSessionId(session);
+          const list = (result.data || []).reverse().map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            turn: m.turn_id,
+            saved: true,
+          }));
+          setMessages(list);
+          welcomeDone.current = list.some((m) => m.role === "assistant");
+        }
+      } catch (e) {
+        if (alive.current) report(e);
+      } finally {
+        if (alive.current) setBusy(false);
+      }
+    })();
+  }, []);
+  useEffect(() => {
+    const list = scroll.current;
+    if (list && followMessages.current)
+      list.scrollTo?.({ top: list.scrollHeight, behavior: "auto" });
+  }, [messages, phase]);
+  useEffect(() => {
+    const node = textarea.current?.closest(".main-shell") as HTMLElement | null;
+    const viewport = window.visualViewport;
+    if (!node || !viewport) return;
+    const resize = () => {
+      node.style.setProperty("--elo-height", viewport.height + "px");
+      if (viewport.height < 430) setMinimized(true);
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      node.style.removeProperty("--elo-height");
+    };
+  }, []);
+  async function replay(text: string) {
+    if (!id.current) return;
+    interrupt();
+    await task.current?.catch(() => {});
+    abort.current = new AbortController();
+    const signal = abort.current.signal;
+    try {
+      let rest = text;
+      while (rest) {
+        const chunk = nextSpeechChunk(rest, true);
+        if (!chunk) break;
+        await speakChunk(chunk, id.current, signal);
+        rest = rest.slice(chunk.length);
+      }
+    } catch (e) {
+      report(e);
+    } finally {
+      setPhase("idle");
     }
   }
   function exportTranscript() {
@@ -561,505 +701,554 @@ export function Session({
         { type: "text/plain;charset=utf-8" },
       ),
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "myn-conversation.txt";
-    link.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "myn-conversation.txt";
+    a.click();
     URL.revokeObjectURL(url);
   }
+  const active = voice.active || busy || phase !== "idle";
   const status = voice.listening
     ? pt
-      ? "Ouvindo sua pergunta…"
-      : "Listening to your question…"
-    : phase === "transcribing"
+      ? "Pode falar. Estou ouvindo."
+      : "Go ahead. I’m listening."
+    : phase === "opening"
       ? pt
-        ? "Transcrevendo…"
-        : "Transcribing…"
-      : phase === "thinking"
+        ? "Preparando sua conversa…"
+        : "Getting your conversation ready…"
+      : phase === "transcribing"
         ? pt
-          ? "Analisando e preparando a resposta…"
-          : "Thinking about your question…"
+          ? "Ouvindo sua pergunta…"
+          : "Understanding your question…"
         : phase === "speaking"
           ? pt
-            ? "Seu mentor está falando…"
-            : "Your mentor is speaking…"
-          : voice.active
+            ? "Falando com você…"
+            : "Speaking with you…"
+          : busy
             ? pt
-              ? "Preparando o microfone…"
-              : "Preparing microphone…"
-            : t.ready;
+              ? "Preparando a resposta…"
+              : "Preparing your answer…"
+            : pt
+              ? "Pronto para conversar"
+              : "Ready to talk";
+  const allSaved = messages.length > 0 && messages.every((m) => m.saved);
+  const showSetup = [
+    "AI_NOT_CONFIGURED",
+    "AI_AUTH_FAILED",
+    "AI_CREDITS_REQUIRED",
+    "SERVICE_NOT_CONFIGURED",
+  ].includes(error?.code || "");
   return (
     <div
       className={
-        compact
-          ? "elo-session " +
-            (sharing ? "is-sharing " : "") +
-            (messages.length ? "has-messages" : "")
-          : ""
+        "elo-session conversation-room " +
+        (sharing ? "is-sharing " : "") +
+        (messages.length ? "has-messages" : "")
       }
     >
-      <div className="session-heading">
-        <div>
-          <span className="eyebrow">
-            {compact ? "Elo" : mode.toUpperCase()} · {status}
-          </span>
-          <h1>
-            {compact
-              ? messages.length
-                ? "Elo"
-                : pt
-                  ? "Vamos dar o próximo passo?"
-                  : "Let’s take the next step."
-              : pt
-                ? "Seu mentor, ao seu lado."
-                : "Your mentor, right beside you."}
-          </h1>
-          <p>
-            {pt
-              ? "Pergunte por voz ou texto. Compartilhe a tela para receber orientação sobre o que você vê."
-              : "Ask by voice or text. Share your screen for guidance on what you see."}
-          </p>
-        </div>
-        <div className="toolbar">
-          {sessionId && (
-            <Link
-              className="button secondary"
-              href={"/app/settings/history/" + sessionId}
-            >
-              {t.history}
-            </Link>
-          )}
-          <Button
-            variant="secondary"
-            disabled={busy || !sessionId}
-            onClick={() => void end()}
-          >
-            {t.end}
-          </Button>
-        </div>
-      </div>
-      {compact &&
-        !messages.length &&
-        !sharing &&
-        !voice.active &&
-        ["voice", "screen"].includes(intent || "") && (
-          <button
-            className="elo-invitation"
-            disabled={busy}
-            onClick={() =>
-              intent === "screen" ? void share() : void startMentor()
-            }
-          >
-            {intent === "screen" ? <Eye size={26} /> : <Mic size={26} />}
+      <div className={"elo-stage " + (sharing ? "with-screen" : "")}>
+        <section
+          className={
+            "shared-screen-panel " +
+            (sharing ? "" : "screen-off") +
+            (minimized ? " preview-minimized" : "")
+          }
+          aria-label={pt ? "Tela compartilhada" : "Shared screen"}
+        >
+          <div className="shared-screen-header">
             <span>
-              {intent === "screen"
+              <span className="status-dot" />
+              {paused
                 ? pt
-                  ? "Vamos olhar juntos"
-                  : "Let’s look together"
+                  ? "Visualização pausada"
+                  : "Screen paused"
                 : pt
-                  ? "Vamos conversar"
-                  : "Let’s talk"}
+                  ? "Vendo juntos"
+                  : "Looking together"}
             </span>
-          </button>
-        )}
-      {compact && voice.active && (
-        <div className="elo-voice-status">
-          <span className="status-dot" />
-          {status}
-          <button onClick={stopMentor}>{pt ? "Parar" : "Stop"}</button>
-        </div>
-      )}
-      {compact && (
-        <details className="elo-preferences">
-          <summary>
-            {pt ? "Preferências da conversa" : "Conversation preferences"}
-          </summary>
-          <label>
-            {pt ? "Idioma" : "Language"}
-            <input
-              value={speechLanguage}
-              maxLength={35}
-              onChange={(e) => setSpeechLanguage(e.target.value)}
-              placeholder="auto"
-            />
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={speak}
-              onChange={(e) => setSpeak(e.target.checked)}
-            />
-            {pt ? "Ouvir respostas" : "Read responses aloud"}
-          </label>
-          <Link href="/app/settings/privacy">
-            {pt ? "Sobre suas conversas" : "About your conversations"}
-          </Link>
-        </details>
-      )}
-      <div className="mentor-toolbar surface">
-        <div>
-          <Button
-            disabled={busy && !voice.active}
-            onClick={() => (voice.active ? stopMentor() : void startMentor())}
-          >
-            {voice.active ? <Square size={17} /> : <Mic size={17} />}{" "}
-            {voice.active
-              ? pt
-                ? "Parar mentor"
-                : "Stop mentor"
-              : pt
-                ? "Conversar com mentor"
-                : "Talk to your mentor"}
-          </Button>
-          <span role="status">{status}</span>
-        </div>
-        <label>
-          {pt ? "Idioma da conversa" : "Conversation language"}
-          <input
-            aria-label={pt ? "Idioma da conversa" : "Conversation language"}
-            list="mentor-languages"
-            value={speechLanguage}
-            maxLength={35}
-            onChange={(e) => setSpeechLanguage(e.target.value)}
-            disabled={voice.active || busy}
-          />
-          <datalist id="mentor-languages">
-            {[
-              ["auto", "Auto — detect spoken language"],
-              ["pt-BR", "Português"],
-              ["en", "English"],
-              ["es", "Español"],
-              ["fr", "Français"],
-              ["de", "Deutsch"],
-              ["it", "Italiano"],
-              ["ja", "日本語"],
-              ["ko", "한국어"],
-              ["zh", "中文"],
-              ["ar", "العربية"],
-              ["hi", "हिन्दी"],
-              ["ru", "Русский"],
-            ].map(([value, label]) => (
-              <option value={value} key={value}>
-                {label}
-              </option>
-            ))}
-          </datalist>
-        </label>
-        <small>
-          {pt
-            ? "Use auto para acompanhar o idioma falado, ou um código de idioma. A qualidade varia conforme o suporte do provedor."
-            : "Use auto to follow the spoken language, or enter a language code. Quality varies with provider support."}
-        </small>
-      </div>
-      <div className="session-layout">
-        <section className="conversation">
-          <div
-            className={
-              "screen-preview " +
-              (mode !== "guide" && !sharing ? "compact" : "")
-            }
-          >
-            <video
-              ref={video}
-              muted
-              playsInline
-              className={sharing ? "" : "hidden"}
-            />
-            {!sharing && (
-              <div className="preview-empty">
-                {mode === "guide" ? (
-                  <ScanEye size={42} />
-                ) : mode === "wake" ? (
-                  <AudioLines size={42} />
-                ) : (
-                  <Radio size={42} />
-                )}
-                <h2>
-                  {pt
-                    ? "Você escolhe o que compartilhar."
-                    : "Choose what your mentor can see."}
-                </h2>
-                <p>
-                  {pt
-                    ? "Um novo olhar para a sua tela a cada pergunta."
-                    : "A current screen image is analyzed with each question."}
-                </p>
-              </div>
-            )}
-            {sharing && (
-              <span className="sharing-status">
-                <span className="status-dot" />
-                {paused
-                  ? pt
-                    ? "ANÁLISE DE TELA PAUSADA"
-                    : "SCREEN ANALYSIS PAUSED"
-                  : pt
-                    ? "TELA COMPARTILHADA"
-                    : "SCREEN SHARING ON"}
-              </span>
-            )}
-          </div>
-          <div className="capture-toolbar">
-            <Button
-              variant="secondary"
-              disabled={!sharing && busy}
-              onClick={() => (sharing ? stopScreen() : void share())}
-            >
-              <MonitorUp size={16} />
-              {sharing ? t.stop : t.share}
-            </Button>
-            {sharing && (
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    screenState.current.paused = !paused;
-                    setPaused(!paused);
-                  }}
-                >
-                  {paused ? <Play size={16} /> : <Pause size={16} />}{" "}
-                  {paused ? t.resume : t.pause}
-                </Button>
-                <Button
-                  disabled={busy || paused || voice.active}
-                  variant="ghost"
-                  onClick={() => {
-                    unlockAudio();
-                    void send(
-                      pt
-                        ? "Confira a tela atual e me oriente no próximo passo."
-                        : "Check the current screen and guide my next step.",
-                    ).catch(() => {});
-                  }}
-                >
-                  {t.check}
-                </Button>
-              </>
-            )}
-          </div>
-          <div className="messages" aria-live="polite">
-            {messages.map((m, i) => (
-              <div key={i} className={"message " + m.role}>
-                <span>
-                  {m.role === "user" ? (pt ? "VOCÊ" : "YOU") : "myn."}
-                </span>
-                <p dir="auto">{m.content}</p>
-              </div>
-            ))}
-            {busy && (
-              <p className="thinking" role="status">
-                {status}
-              </p>
-            )}
-          </div>
-          {error && (
-            <div role="alert" className="notice error">
-              {error}
-              {["DATABASE_NOT_READY", "DATABASE_PERMISSION_DENIED"].includes(
-                errorCode,
-              ) && (
-                <p>
-                  <Link href="/app/setup">
-                    {pt
-                      ? "Ativar mentor e histórico"
-                      : "Activate mentor and history"}{" "}
-                    →
-                  </Link>
-                </p>
-              )}
-            </div>
-          )}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              unlockAudio();
-              void send().catch(() => {});
-            }}
-            className="composer"
-          >
-            <textarea
-              dir="auto"
-              aria-label={t.ask}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={t.ask}
-              maxLength={4000}
-              disabled={busy || voice.active}
-            />
             <div>
-              {compact && (
-                <button
-                  type="button"
-                  className={"composer-tool " + (sharing ? "tool-active" : "")}
-                  aria-label={sharing ? t.stop : t.share}
-                  title={sharing ? t.stop : t.share}
-                  onClick={() => (sharing ? stopScreen() : void share())}
-                >
-                  <Eye size={21} />
-                </button>
-              )}
               <button
-                type="button"
-                className={
-                  "icon-button " + (voice.listening ? "recording" : "")
-                }
-                disabled={busy || (voice.active && !voice.listening)}
-                onClick={() =>
-                  compact
-                    ? voice.active
-                      ? stopMentor()
-                      : void startMentor()
-                    : void manualMic()
-                }
+                onClick={() => {
+                  screenState.current.paused = !paused;
+                  setPaused(!paused);
+                }}
+                aria-label={paused ? t.resume : t.pause}
+                title={paused ? t.resume : t.pause}
+              >
+                {paused ? <Play size={16} /> : <Pause size={16} />}
+              </button>
+              <button
+                onClick={() => setMinimized(!minimized)}
                 aria-label={
-                  compact
-                    ? voice.active
-                      ? pt
-                        ? "Parar conversa"
-                        : "Stop conversation"
-                      : pt
-                        ? "Conversar por voz"
-                        : "Talk by voice"
-                    : voice.listening
-                      ? t.stopRecord
-                      : t.listen
+                  minimized
+                    ? pt
+                      ? "Expandir tela"
+                      : "Expand screen"
+                    : pt
+                      ? "Recolher tela"
+                      : "Collapse screen"
                 }
               >
-                {voice.listening ? <Square size={18} /> : <Mic size={18} />}
+                {minimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
               </button>
-              <span>
-                {voice.listening
-                  ? pt
-                    ? "Fale; envio automático após a pausa."
-                    : "Speak; your question sends after a pause."
-                  : pt
-                    ? "Texto e voz · transcrição no histórico"
-                    : "Text & voice · transcripts in history"}
-              </span>
-              <Button disabled={busy || voice.active || !input.trim()}>
-                <Send size={16} />
-                {t.send}
-              </Button>
+              <button onClick={stopScreen} aria-label={t.stop} title={t.stop}>
+                <Square size={15} />
+              </button>
             </div>
-          </form>
-          {voice.active && (
-            <div
-              className="mic-meter"
-              role="meter"
-              aria-label="Microphone level"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={voice.level}
-            >
-              <span style={{ width: voice.level + "%" }} />
-            </div>
-          )}
-          <div className="speech-toggle">
-            <label>
-              <input
-                type="checkbox"
-                checked={speak}
-                onChange={(e) => setSpeak(e.target.checked)}
-              />
-              {t.speak}
-            </label>
-            <Button
-              variant="ghost"
-              disabled={phase !== "speaking" && !voice.active}
-              onClick={() => {
-                audio.current?.pause();
-                if (phase !== "speaking") abort.current?.abort();
-              }}
-            >
-              {pt ? "Interromper resposta" : "Interrupt response"}
-            </Button>
           </div>
-          <audio
-            ref={audio}
-            controls
-            className={audioUrl ? "mentor-audio" : "hidden"}
-            aria-label={
-              pt ? "Resposta em áudio do mentor" : "Mentor audio response"
-            }
-          />
-          {audioError && (
-            <p role="status" className="notice">
-              {audioError}
-            </p>
-          )}
-          {lastReply && !busy && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                unlockAudio();
-                if (sessionId) void say(lastReply, sessionId);
-              }}
-            >
-              <Volume2 size={15} />
-              {pt ? "Ouvir novamente" : "Listen again"}
-            </Button>
-          )}
-          {messages.length > 0 && (
-            <div className="transcript-status">
-              <span>
-                {saved
-                  ? pt
-                    ? "Conversa salva no seu histórico privado."
-                    : "Conversation saved in your private history."
-                  : pt
-                    ? "Há mensagens sem confirmação de salvamento. Exporte uma cópia."
-                    : "Some messages are not confirmed saved. Export a copy."}
-              </span>
-              <Button variant="ghost" onClick={exportTranscript}>
-                <Download size={15} />
-                {pt ? "Exportar conversa" : "Export conversation"}
-              </Button>
-            </div>
-          )}
-        </section>
-        <aside className="task-panel">
-          <span className="eyebrow">{pt ? "SEU MENTOR" : "YOUR MENTOR"}</span>
-          <h2>
-            {pt
-              ? "Uma conversa que acompanha você."
-              : "A conversation that stays with you."}
-          </h2>
-          {guidance?.steps.map((step, i) => (
-            <div className={"task-step " + step.status} key={i}>
-              <span>
-                {step.status === "completed" ? <Check size={14} /> : i + 1}
-              </span>
-              <div>
-                <strong>{step.title}</strong>
-                {step.evidence && <small>{step.evidence}</small>}
-              </div>
-            </div>
-          ))}
-          {guidance && (
-            <>
-              <h3>{pt ? "O que está visível" : "Latest observation"}</h3>
-              <p dir="auto">{guidance.visible}</p>
-              {guidance.uncertainty && (
-                <p className="uncertainty" dir="auto">
-                  {guidance.uncertainty}
-                </p>
-              )}
-            </>
-          )}
-          <div className="privacy-note">
-            <ShieldCheck size={20} />
-            <p>
-              {pt
-                ? "Suas perguntas, transcrições, respostas e resumo ficam no histórico privado para você revisar. Capturas de tela e arquivos de áudio não são guardados pelo MYN."
-                : "Your questions, transcripts, replies and summary are saved privately for review. MYN does not retain screen images or audio files."}
-            </p>
+          <div className="shared-video">
+            <video ref={video} muted playsInline />
+          </div>
+          {sharing && (
             <small>
               {pt
-                ? "A escuta pausa durante a resposta. Pare a conversa ou saia para encerrar o microfone."
-                : "Listening pauses during each reply. Stop the conversation or leave to release the microphone."}
+                ? "A tela atual acompanha cada pergunta."
+                : "Your current screen accompanies each question."}
             </small>
+          )}
+        </section>
+        <section
+          className="conversation-column"
+          aria-label={pt ? "Conversa" : "Conversation"}
+        >
+          <div
+            className="conversation-scroll"
+            ref={scroll}
+            onScroll={(event) => {
+              const list = event.currentTarget;
+              followMessages.current =
+                list.scrollHeight - list.scrollTop - list.clientHeight < 100;
+            }}
+            tabIndex={0}
+            aria-label={pt ? "Mensagens da conversa" : "Conversation messages"}
+          >
+            {!messages.length && !busy && (
+              <div className="conversation-empty">
+                <h1>
+                  {pt
+                    ? "O que vamos descobrir hoje?"
+                    : "What shall we explore today?"}
+                </h1>
+                <p>
+                  {pt
+                    ? "Escreva uma ideia ou toque no microfone."
+                    : "Write a thought or tap the microphone."}
+                </p>
+                {intent === "screen" && !sharing && (
+                  <button className="empty-intent" onClick={() => void share()}>
+                    <Eye size={20} />
+                    {pt ? "Vamos olhar juntos" : "Let’s look together"}
+                  </button>
+                )}
+                {intent === "voice" && !voice.active && (
+                  <button
+                    className="empty-intent"
+                    onClick={() => void startVoice()}
+                  >
+                    <Mic size={20} />
+                    {pt ? "Vamos conversar" : "Let’s talk"}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="conversation-timeline" aria-live="polite">
+              {messages.map((m, i) => (
+                <article
+                  key={m.turn ? m.turn + m.role : i}
+                  className={"conversation-message " + m.role}
+                >
+                  {m.role === "assistant" && (
+                    <span className="speaker-mark" aria-label="MYN">
+                      m<span>.</span>
+                    </span>
+                  )}
+                  <div className="message-content" dir="auto">
+                    {m.role === "assistant" ? (
+                      <>
+                        <div className="conversation-markdown">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            skipHtml
+                            disallowedElements={["img"]}
+                            components={{
+                              a: ({ node: _node, children, ...props }) => (
+                                <a
+                                  {...props}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                              table: ({ node: _node, children, ...props }) => (
+                                <div className="markdown-table">
+                                  <table {...props}>{children}</table>
+                                </div>
+                              ),
+                            }}
+                          >
+                            {m.content}
+                          </ReactMarkdown>
+                        </div>
+                        {m.content && !busy && (
+                          <div className="message-actions">
+                            <button
+                              type="button"
+                              aria-label={
+                                pt ? "Copiar resposta" : "Copy answer"
+                              }
+                              title={pt ? "Copiar resposta" : "Copy answer"}
+                              onClick={() =>
+                                void navigator.clipboard
+                                  ?.writeText(m.content)
+                                  .catch(() =>
+                                    setNotice(
+                                      pt
+                                        ? "Não foi possível copiar."
+                                        : "Could not copy.",
+                                    ),
+                                  )
+                              }
+                            >
+                              <Copy size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={
+                                pt
+                                  ? "Ouvir esta resposta"
+                                  : "Listen to this answer"
+                              }
+                              title={
+                                pt
+                                  ? "Ouvir esta resposta"
+                                  : "Listen to this answer"
+                              }
+                              onClick={() => void replay(m.content)}
+                            >
+                              <Volume2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      m.content
+                    )}
+                  </div>
+                </article>
+              ))}
+              {busy && phase !== "speaking" && (
+                <p role="status" className="conversation-working">
+                  <LoaderCircle size={15} className="spin" />
+                  {status}
+                </p>
+              )}
+            </div>
           </div>
-        </aside>
+          <div className="conversation-dock">
+            {error && (
+              <div className="conversation-error" role="alert">
+                <p>{error.message}</p>
+                <div>
+                  {showSetup && (
+                    <Link href="/app/settings/audio">
+                      {pt ? "Verificar conexão" : "Check connection"} →
+                    </Link>
+                  )}
+                  {[
+                    "DATABASE_NOT_READY",
+                    "DATABASE_PERMISSION_DENIED",
+                  ].includes(error.code || "") && (
+                    <Link href="/app/setup">
+                      {pt
+                        ? "Ativar mentor e histórico"
+                        : "Activate mentor and history"}{" "}
+                      →
+                    </Link>
+                  )}
+                  {failedTurn.current && (
+                    <button
+                      onClick={() =>
+                        void turn(failedTurn.current!.text, {
+                          turnId: failedTurn.current!.turnId,
+                        }).catch(() => {})
+                      }
+                    >
+                      <RefreshCw size={13} />
+                      {pt ? "Tentar novamente" : "Retry"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {audioError && (
+              <p className="conversation-audio-notice" role="status">
+                {audioError}
+              </p>
+            )}
+            {voice.active && (
+              <div className="conversation-voice-status" role="status">
+                <span
+                  className="voice-level"
+                  style={{ opacity: Math.max(0.4, voice.level / 100) }}
+                />
+                <span>{status}</span>
+                <button onClick={interrupt}>{pt ? "Parar" : "Stop"}</button>
+              </div>
+            )}
+            <form
+              className="conversation-composer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+              }}
+            >
+              <textarea
+                ref={textarea}
+                dir="auto"
+                aria-label={t.ask}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={pt ? "Pergunte o que quiser" : "Ask anything"}
+                maxLength={4000}
+                rows={2}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    if (input.trim() && !busy) void submit();
+                  }
+                }}
+              />
+              <div className="conversation-composer-tools">
+                <div>
+                  <button
+                    type="button"
+                    className={sharing ? "active" : ""}
+                    aria-label={sharing ? t.stop : t.share}
+                    title={sharing ? t.stop : t.share}
+                    onClick={() => (sharing ? stopScreen() : void share())}
+                  >
+                    <Eye size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    className={voice.active ? "active voice-on" : ""}
+                    aria-label={
+                      voice.active
+                        ? pt
+                          ? "Parar conversa"
+                          : "Stop conversation"
+                        : compact
+                          ? pt
+                            ? "Conversar por voz"
+                            : "Talk by voice"
+                          : t.listen
+                    }
+                    title={pt ? "Conversar por voz" : "Talk by voice"}
+                    onClick={() => void startVoice(compact)}
+                  >
+                    {voice.active ? <Square size={17} /> : <Mic size={19} />}
+                  </button>
+                  <details className="conversation-language">
+                    <summary
+                      aria-label={pt ? "Alterar idioma" : "Change language"}
+                      title={pt ? "Alterar idioma" : "Change language"}
+                    >
+                      <Globe2 size={17} />
+                      <span>
+                        {speechLanguage === "auto" ? "Auto" : speechLanguage}
+                      </span>
+                    </summary>
+                    <div>
+                      <label>
+                        {pt ? "Idioma das respostas" : "Reply language"}
+                        <select
+                          aria-label={
+                            pt ? "Idioma da conversa" : "Conversation language"
+                          }
+                          value={
+                            [
+                              "auto",
+                              "pt-BR",
+                              "en",
+                              "es",
+                              "fr",
+                              "de",
+                              "it",
+                              "ja",
+                              "ko",
+                              "zh",
+                              "ar",
+                              "hi",
+                              "ru",
+                            ].includes(speechLanguage)
+                              ? speechLanguage
+                              : "custom"
+                          }
+                          onChange={(e) => {
+                            if (e.target.value !== "custom")
+                              void changeLanguage(e.target.value);
+                          }}
+                        >
+                          {[
+                            ["auto", pt ? "Automático" : "Automatic"],
+                            ["pt-BR", "Português"],
+                            ["en", "English"],
+                            ["es", "Español"],
+                            ["fr", "Français"],
+                            ["de", "Deutsch"],
+                            ["it", "Italiano"],
+                            ["ja", "日本語"],
+                            ["ko", "한국어"],
+                            ["zh", "中文"],
+                            ["ar", "العربية"],
+                            ["hi", "हिन्दी"],
+                            ["ru", "Русский"],
+                            [
+                              "custom",
+                              pt ? "Outro idioma" : "Another language",
+                            ],
+                          ].map(([v, l]) => (
+                            <option key={v} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        {pt
+                          ? "Outro código de idioma"
+                          : "Another language code"}
+                        <input
+                          aria-label={pt ? "Código de idioma" : "Language code"}
+                          value={speechLanguage}
+                          maxLength={35}
+                          onChange={(e) => void changeLanguage(e.target.value)}
+                        />
+                      </label>
+                      <small>
+                        {pt
+                          ? "A fala é transcrita no idioma original. Você pode mudar a resposta a qualquer momento."
+                          : "Speech stays in its original language. You can change the reply language at any time."}
+                      </small>
+                    </div>
+                  </details>
+                  <details className="conversation-options">
+                    <summary
+                      aria-label={
+                        pt ? "Opções da conversa" : "Conversation options"
+                      }
+                    >
+                      <SlidersHorizontal size={17} />
+                    </summary>
+                    <div>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={speak}
+                          onChange={(e) => {
+                            setSpeak(e.target.checked);
+                            options.current.speak = e.target.checked;
+                          }}
+                        />
+                        {t.speak}
+                      </label>
+                      {sessionId && (
+                        <Link href={"/app/settings/history/" + sessionId}>
+                          {t.history}
+                        </Link>
+                      )}
+                      {messages.length > 0 && (
+                        <button type="button" onClick={exportTranscript}>
+                          <Download size={14} />
+                          {pt ? "Exportar conversa" : "Export conversation"}
+                        </button>
+                      )}
+                    </div>
+                  </details>
+                </div>
+                {busy || phase === "speaking" ? (
+                  <button
+                    type="button"
+                    className="conversation-send"
+                    aria-label={
+                      pt ? "Interromper resposta" : "Interrupt response"
+                    }
+                    title={pt ? "Interromper resposta" : "Interrupt response"}
+                    onClick={interrupt}
+                  >
+                    <Square size={15} />
+                  </button>
+                ) : (
+                  <button
+                    className="conversation-send"
+                    disabled={!input.trim()}
+                    aria-label={t.send}
+                    title={t.send}
+                  >
+                    <ArrowUp size={19} />
+                  </button>
+                )}
+              </div>
+            </form>
+            <div className="conversation-footer">
+              <span>
+                {allSaved ? (
+                  <>
+                    <Check size={12} />
+                    {pt
+                      ? "Conversa salva no seu histórico privado."
+                      : "Conversation saved in your private history."}
+                  </>
+                ) : sharing ? (
+                  pt ? (
+                    "Você escolhe o que compartilhar."
+                  ) : (
+                    "You choose what to share."
+                  )
+                ) : pt ? (
+                  "Um passo de cada vez."
+                ) : (
+                  "One step at a time."
+                )}
+              </span>
+              {notice && <span role="status">{notice}</span>}
+            </div>
+            <audio
+              ref={player}
+              controls
+              className={
+                audioUrl && audioError ? "conversation-audio" : "hidden"
+              }
+              aria-label={
+                pt ? "Resposta em áudio do mentor" : "Mentor audio response"
+              }
+            />
+            {lastReply && !busy && audioError && (
+              <button
+                className="replay-response"
+                onClick={() => {
+                  unlockAudio();
+                  if (id.current) {
+                    abort.current = new AbortController();
+                    void speakChunk(
+                      lastReply.slice(0, 4000),
+                      id.current,
+                      abort.current.signal,
+                    ).catch(report);
+                  }
+                }}
+              >
+                <Volume2 size={14} />
+                {pt ? "Ouvir resposta" : "Play answer"}
+              </button>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

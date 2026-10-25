@@ -130,3 +130,45 @@ it("releases devices if transcription or inference fails", async () => {
   expect(result.current.active).toBe(false);
   expect(track.stop).toHaveBeenCalledOnce();
 });
+it("does not start recording until the generated introduction has finished playing", async () => {
+  let release!: () => void;
+  const greeting = new Promise<void>((r) => (release = r)),
+    onUtterance = vi.fn(),
+    onError = vi.fn();
+  const { result } = renderHook(() => useMentorVoice({ onUtterance, onError }));
+  let opening!: Promise<void>;
+  act(() => {
+    opening = result.current.start(true, () => greeting);
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(result.current.active).toBe(true);
+  expect(result.current.listening).toBe(false);
+  await act(async () => {
+    release();
+    await opening;
+  });
+  expect(result.current.listening).toBe(true);
+  expect(onUtterance).not.toHaveBeenCalled();
+});
+it("explains denied microphone permission instead of silently staying idle", async () => {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi
+        .fn()
+        .mockRejectedValue(new DOMException("Denied", "NotAllowedError")),
+    },
+  });
+  const onError = vi.fn();
+  const { result } = renderHook(() =>
+    useMentorVoice({ onUtterance: vi.fn(), onError }),
+  );
+  await act(async () => result.current.start());
+  expect(result.current.active).toBe(false);
+  expect(onError).toHaveBeenCalledWith(
+    expect.objectContaining({ code: "MICROPHONE_UNAVAILABLE" }),
+  );
+});

@@ -167,6 +167,27 @@ try {
       "authenticated Home without database warning",
     );
   }
+  if (process.env.MYN_PROVIDER_CHECK === "1" && process.env.MYN_TEST_ORIGIN) {
+    const origin = process.env.MYN_TEST_ORIGIN;
+    const health = await fetch(origin + "/api/conversation/status", {
+      headers: { cookie: a.cookie() },
+    });
+    const state = await health.json();
+    console.log("Deployment conversation state: " + JSON.stringify(state));
+    const probe = await fetch(origin + "/api/conversation/status", {
+      method: "POST",
+      headers: { origin, cookie: a.cookie() },
+    });
+    const outcome = await probe.json();
+    console.log(
+      "Live provider probe: " +
+        JSON.stringify({
+          status: probe.status,
+          code: outcome.code || null,
+          connected: outcome.connected === true,
+        }),
+    );
+  }
   if (process.env.MYN_SCREENSHOTS === "1" && process.env.MYN_TEST_ORIGIN) {
     const { chromium } = await import("@playwright/test");
     const browser = await chromium.launch({

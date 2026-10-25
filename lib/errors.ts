@@ -65,6 +65,12 @@ export function publicError(error: unknown): AppError {
       503,
       "The AI provider has no available credits.",
     );
+  if (e?.code === "model_not_found")
+    return new AppError(
+      "AI_MODEL_UNAVAILABLE",
+      503,
+      "This project cannot access the selected conversation model.",
+    );
   if (e?.status === 429)
     return new AppError(
       "AI_BUSY",
@@ -124,14 +130,30 @@ export function errorMessage(
     AI_BUSY:
       "O serviço de conversa está ocupado. Tente novamente em instantes.",
     AI_TIMEOUT:
-      "A resposta demorou para responder. Sua pergunta continua no histórico; tente novamente.",
+      "A resposta demorou além do esperado. Sua pergunta continua no histórico; tente novamente.",
     QUOTA_EXCEEDED: "Você atingiu a franquia mensal do seu plano.",
     RATE_LIMITED: "Aguarde alguns instantes antes da próxima pergunta.",
     UNAUTHORIZED: "Entre novamente na sua conta.",
     SESSION_EXPIRED:
       "Esta sessão chegou ao tempo máximo. Inicie outra conversa.",
     INVALID_REQUEST: "Verifique sua mensagem ou gravação.",
-    SERVICE_NOT_CONFIGURED: "O serviço ainda precisa ser configurado.",
+    SERVICE_NOT_CONFIGURED:
+      "Esta versão do site ainda precisa ser conectada ao serviço de conversa.",
+    AI_NOT_CONFIGURED:
+      "A conversa ainda não foi conectada neste site. Verifique a conexão em Configurações → Voz e idioma.",
+    RESPONSE_TIMEOUT:
+      "A resposta demorou além do esperado. Você pode tentar novamente; sua pergunta foi preservada quando confirmada pelo histórico.",
+    CONNECTION_LOST: "A conexão foi interrompida. Tente novamente.",
+    WELCOME_ALREADY_SENT: "Podemos continuar de onde paramos.",
+    MICROPHONE_UNAVAILABLE:
+      "Permita o microfone no navegador para conversar por voz.",
+    AUDIO_BLOCKED:
+      "Toque em reproduzir para ouvir. Seu navegador bloqueou o início automático.",
+    AI_MODEL_UNAVAILABLE:
+      "Este projeto não tem acesso ao modelo de conversa selecionado.",
+    AUDIO_UNAVAILABLE:
+      "O áudio não pôde ser reproduzido. A resposta em texto continua disponível.",
+
     FORBIDDEN: "Esta sessão não está disponível.",
     TRANSCRIPTION_EMPTY:
       "Não consegui ouvir uma pergunta. Tente falar mais perto do microfone.",

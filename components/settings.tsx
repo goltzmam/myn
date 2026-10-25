@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { ConversationConnection } from "@/components/conversation-connection";
 import { browserDb } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { usePreferences } from "@/stores/preferences";
@@ -154,6 +155,7 @@ export function Settings({ section = "account" }: { section?: string }) {
       )}
       {section === "audio" && (
         <>
+          <ConversationConnection />
           <h2>{pt ? "Converse do seu jeito." : "Speak your way."}</h2>
           <p>
             {pt

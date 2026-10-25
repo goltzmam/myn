@@ -37,17 +37,7 @@ export function Shell({
     pathname.includes("/settings") ||
     pathname.includes("/history") ||
     pathname.includes("/billing");
-  const title = settings
-    ? pt
-      ? "Configurações"
-      : "Settings"
-    : pathname.includes("/agents")
-      ? pt
-        ? "Agente"
-        : "Agents"
-      : pathname === base
-        ? "Home"
-        : "Elo";
+  const conversation = pathname === base + "/elo";
   const active = (href: string) =>
     href === base
       ? pathname === base
@@ -57,7 +47,13 @@ export function Shell({
             pathname.startsWith(base + p),
           ));
   return (
-    <div className={"app-shell refined-shell " + (open ? "menu-open" : "")}>
+    <div
+      className={
+        "app-shell refined-shell " +
+        (conversation && !preview ? "is-elo " : "") +
+        (open ? "menu-open" : "")
+      }
+    >
       <button
         className="sidebar-scrim"
         aria-label={pt ? "Fechar menu" : "Close menu"}
@@ -122,9 +118,8 @@ export function Shell({
             >
               {open ? <X size={18} /> : <Menu size={18} />}
             </button>
-            <span>{title}</span>
           </div>
-          {pathname !== base && (
+          {conversation && (
             <button
               className="new-conversation"
               title={pt ? "Nova conversa" : "New conversation"}

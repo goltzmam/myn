@@ -35,14 +35,18 @@ export function useMentorVoice({
     context.current = null;
   }, []);
   useEffect(() => () => stop(), [stop]);
-  async function start(continuous = true) {
+  async function start(continuous = true, beforeListen?: () => Promise<void>) {
     if (running.current) return;
+    let token = 0;
     try {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
-        throw new Error(
-          "Microphone capture requires a compatible browser and HTTPS.",
+        throw Object.assign(
+          new Error(
+            "Microphone capture requires a compatible browser and HTTPS.",
+          ),
+          { code: "MICROPHONE_UNAVAILABLE" },
         );
-      const token = ++generation.current;
+      token = ++generation.current;
       const current = () => running.current && generation.current === token;
       running.current = true;
       setActive(true);
@@ -140,10 +144,27 @@ export function useMentorVoice({
         sample();
         sampling.current = setInterval(sample, 100);
       }
-      recordTurn();
+      if (beforeListen) await beforeListen();
+      if (current()) recordTurn();
     } catch (e) {
+      if (token && generation.current !== token) return;
       stop();
-      callbacks.current.onError(e);
+      const mediaError = e as Error;
+      callbacks.current.onError(
+        [
+          "NotAllowedError",
+          "NotFoundError",
+          "NotReadableError",
+          "SecurityError",
+        ].includes(mediaError.name)
+          ? Object.assign(
+              new Error(
+                "Allow access to a working microphone in your browser.",
+              ),
+              { code: "MICROPHONE_UNAVAILABLE" },
+            )
+          : e,
+      );
     }
   }
   function finish() {

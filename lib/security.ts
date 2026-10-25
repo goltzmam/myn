@@ -13,10 +13,10 @@ export function sameOrigin(req: Request) {
     throw new Error("Forbidden");
   }
 }
-export function failure(error: unknown) {
+export function failure(error: unknown, details: Record<string, unknown> = {}) {
   const e = publicError(error);
   return NextResponse.json(
-    { error: e.message, code: e.code },
+    { error: e.message, code: e.code, ...details },
     { status: e.status, headers: { "Cache-Control": "no-store" } },
   );
 }

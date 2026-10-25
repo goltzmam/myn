@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   finish: vi.fn(),
   frame: vi.fn(),
   config: null as any,
+  active: false,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("next/link", () => ({
@@ -27,7 +28,7 @@ vi.mock("@/hooks/use-mentor-voice", () => ({
       start: mocks.start,
       stop: mocks.stop,
       finish: mocks.finish,
-      active: false,
+      active: mocks.active,
       listening: false,
       level: 0,
     };
@@ -53,6 +54,7 @@ function response(guidance?: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   calls = [];
+  mocks.active = false;
   history.replaceState({}, "", "/");
   usePreferences.setState({ language: "pt-BR", speechLanguage: "auto" });
   mocks.frame.mockResolvedValue("data:image/jpeg;base64,YQ==");
@@ -82,6 +84,16 @@ beforeEach(() => {
           : JSON.parse(init.body as string);
       calls.push({ url, body });
       if (url === "/api/sessions") return Response.json({ id });
+      if (url === "/api/chat")
+        return new Response(
+          JSON.stringify({ accepted: true, questionSaved: true }) +
+            "\n" +
+            JSON.stringify({ delta: reply }) +
+            "\n" +
+            JSON.stringify({ done: true, saved: true }) +
+            "\n",
+          { headers: { "Content-Type": "application/x-ndjson" } },
+        );
       if (url === "/api/assist") return response();
       if (url === "/api/audio" && body instanceof FormData)
         return Response.json({ text: "इस स्क्रीन को समझाइए।" });
@@ -124,9 +136,7 @@ async function ask(text: string) {
 it("captures a fresh shared frame per question, shows the real answer and requests speech for the same session", async () => {
   render(React.createElement(Session, { mode: "guide" }));
   fireEvent.click(screen.getByRole("button", { name: "Compartilhar tela" }));
-  await waitFor(() =>
-    expect(screen.getByText("TELA COMPARTILHADA")).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByText("Vendo juntos")).toBeTruthy());
   await ask("इस स्क्रीन को समझाइए।");
   await waitFor(() =>
     expect(calls.filter((c) => c.url === "/api/audio")).toHaveLength(1),
@@ -232,7 +242,7 @@ it("offers a visible player when the browser blocks automatic audio", async () =
   );
   expect(
     screen.getByLabelText("Resposta em áudio do mentor").getAttribute("class"),
-  ).toBe("mentor-audio");
+  ).toBe("conversation-audio");
   expect(screen.getByText(reply)).toBeTruthy();
 });
 
@@ -270,8 +280,112 @@ it("an intentional Home handoff is consumed once, even in StrictMode", async () 
     ),
   );
   await waitFor(() =>
-    expect(calls.filter((c) => c.url === "/api/assist")).toHaveLength(1),
+    expect(calls.filter((c) => c.url === "/api/chat")).toHaveLength(1),
   );
   expect(sessionStorage.getItem("myn-draft:" + key)).toBeNull();
   await waitFor(() => expect(screen.getByText(reply)).toBeTruthy());
+});
+it("streams a current screen through the production Elo path and keeps language switching enabled", async () => {
+  render(React.createElement(Session, { mode: "wake", compact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Compartilhar tela" }));
+  await waitFor(() => expect(screen.getByText("Vendo juntos")).toBeTruthy());
+  const menu = screen.getByLabelText("Alterar idioma");
+  fireEvent.click(menu);
+  fireEvent.change(screen.getByLabelText("Idioma da conversa"), {
+    target: { value: "fr" },
+  });
+  expect(
+    (screen.getByLabelText("Idioma da conversa") as HTMLSelectElement).disabled,
+  ).toBe(false);
+  await ask("Explique cette page");
+  const request = calls.find((c) => c.url === "/api/chat");
+  expect(request?.body).toMatchObject({
+    kind: "message",
+    language: "fr",
+    image: "data:image/jpeg;base64,YQ==",
+  });
+  expect(screen.queryByText("Elo", { exact: true })).toBeNull();
+});
+it("voice starts with a stored model introduction before the first recorded question", async () => {
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (
+        url === "/api/chat" &&
+        JSON.parse(init.body as string).kind === "welcome"
+      ) {
+        const body = JSON.parse(init.body as string);
+        calls.push({ url, body });
+        return new Response(
+          JSON.stringify({ delta: "Olá, sou a MYN. Vamos olhar juntos?" }) +
+            "\n" +
+            JSON.stringify({ done: true, saved: true }) +
+            "\n",
+        );
+      }
+      return original(url, init);
+    }),
+  );
+  mocks.start.mockImplementation(
+    async (_continuous: boolean, beforeListen?: () => Promise<void>) => {
+      await beforeListen?.();
+      expect(calls.find((c) => c.url === "/api/chat")?.body.kind).toBe(
+        "welcome",
+      );
+      expect(
+        calls.some(
+          (c) => c.url === "/api/audio" && !(c.body instanceof FormData),
+        ),
+      ).toBe(true);
+      expect(
+        document.querySelectorAll(".conversation-message.user"),
+      ).toHaveLength(0);
+      await mocks.config.onUtterance(
+        new File(["voice"], "question.webm", { type: "audio/webm" }),
+      );
+    },
+  );
+  render(React.createElement(Session, { mode: "wake", compact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Conversar por voz" }));
+  await waitFor(() =>
+    expect(calls.filter((c) => c.url === "/api/chat")).toHaveLength(2),
+  );
+  expect(calls.filter((c) => c.url === "/api/chat")[1].body.message).toBe(
+    "इस स्क्रीन को समझाइए।",
+  );
+  await waitFor(() => expect(screen.getByText(reply)).toBeTruthy());
+});
+it("a language change during an active voice session applies to the very next question", async () => {
+  let release!: () => void;
+  const nextQuestion = new Promise<void>((r) => (release = r));
+  mocks.start.mockImplementation(
+    async (_continuous: boolean, beforeListen?: () => Promise<void>) => {
+      mocks.active = true;
+      await beforeListen?.();
+      await nextQuestion;
+      await mocks.config.onUtterance(
+        new File(["voice"], "question.webm", { type: "audio/webm" }),
+      );
+    },
+  );
+  render(React.createElement(Session, { mode: "wake", compact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Conversar por voz" }));
+  await waitFor(() => expect(screen.getByText(reply)).toBeTruthy());
+  fireEvent.click(screen.getByLabelText("Alterar idioma"));
+  const select = screen.getByLabelText(
+    "Idioma da conversa",
+  ) as HTMLSelectElement;
+  expect(select.disabled).toBe(false);
+  fireEvent.change(select, { target: { value: "fr" } });
+  release();
+  await waitFor(() =>
+    expect(calls.filter((c) => c.url === "/api/chat")).toHaveLength(2),
+  );
+  expect(calls.filter((c) => c.url === "/api/chat")[1].body.language).toBe(
+    "fr",
+  );
+  expect(calls.filter((c) => c.url === "/api/chat")[1].body.message).toBe(
+    "इस स्क्रीन को समझाइए।",
+  );
 });

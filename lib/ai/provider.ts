@@ -1,5 +1,6 @@
 import "server-only";
 import OpenAI from "openai";
+import { AppError } from "@/lib/errors";
 import { zodTextFormat } from "openai/helpers/zod";
 import { guidanceSchema, policy, type Guidance } from "@/lib/guide";
 export interface AIProvider {
@@ -16,12 +17,18 @@ export interface AIProvider {
   ): Promise<{ guidance: Guidance; tokens: number }>;
 }
 export function openai() {
-  if (!(process.env.MYN_AI_KEY || process.env.OPENAI_API_KEY))
-    throw new Error("Configure MYN_AI_KEY to enable AI.");
+  const key =
+    process.env.MYN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim() || "";
+  if (!key)
+    throw new AppError(
+      "AI_NOT_CONFIGURED",
+      503,
+      "Conversation is not connected in this deployment. Configure MYN_AI_KEY in the server environment and redeploy.",
+    );
   return new OpenAI({
-    apiKey: process.env.MYN_AI_KEY || process.env.OPENAI_API_KEY,
-    timeout: 45000,
-    maxRetries: 1,
+    apiKey: key,
+    timeout: 35000,
+    maxRetries: 0,
   });
 }
 export const provider: AIProvider = {

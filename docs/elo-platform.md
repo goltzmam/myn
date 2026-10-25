@@ -13,7 +13,7 @@
 
 ## Database and authorization applied
 
-The authorized Supabase Management token was used to apply migrations 0001, 0002 and 0003. The real project now has 12 application tables with row-level security enabled on all 12 and ownership policies installed. Defaults/plans and built-in agents were seeded without duplicating existing records. Existing auth users received profiles.
+The authorized Supabase Management token was used to apply migrations 0001, 0002, 0003 and 0004. The real project now has 12 application tables with row-level security enabled on all 12 and ownership policies installed. Defaults/plans and built-in agents were seeded without duplicating existing records. Existing auth users received profiles.
 
 Self-service deletion uses a narrowly scoped authenticated database function; clients cannot choose another user's ID, and accounts with active subscriptions cannot be deleted. The web app does not need an administrative service key for this action. Account-level Management credentials were used only in tooling, never embedded in the browser or committed.
 
@@ -43,6 +43,20 @@ The production domain currently has a Vercel authentication gate. A GitHub push 
 
 ## Home / Elo separation
 
-Home now uses a left-aligned return-hub layout with an Elo invitation, real session continuation and quieter navigation shortcuts. The duplicate text composer, microphone, screen-sharing shortcut and starter prompts were removed from Home. The header new-conversation action appears outside Home, where it is useful. Elo remains the focused conversation canvas. Home fetches only the data it displays.
+Home now uses a left-aligned return-hub layout with an Elo invitation, real session continuation and quieter navigation shortcuts. The duplicate text composer, microphone, screen-sharing shortcut and starter prompts were removed from Home. The header new-conversation action appears only in Elo. Elo remains the focused conversation canvas. Home fetches only the data it displays.
 
 Validation: 66 unit/integration/database tests passed; 20 browser tests passed; production build and TypeScript checks passed. New checks ensure Home has no conversation input, stored sessions resume the correct ID, and mobile reduced-motion settings preserve the sidebar's essential offscreen layout. Desktop and mobile visual captures were inspected. This change does not alter database schema or provider credentials.
+
+## Streaming conversation and responsive room
+
+Elo no longer repeats its section name in the header/content. The only new-conversation action lives in Elo. Messages have readable spacing, Markdown, copy and replay actions. A fixed-height room keeps the composer visible, scrolls the transcript independently and shows the shared-screen preview alongside it on desktop or above it on tablet/phone. Short viewports collapse the preview; the visual viewport follows the mobile keyboard. Scroll follows new content unless the reader scrolls back.
+
+All compact production conversations use `/api/chat`, including current image frames. Provider deltas reach the transcript while sentence chunks are synthesized and played sequentially. Language changes cancel queued older-language audio and apply to the next turn. Transcription detects the original spoken language independently of the requested response language. Voice acquires the microphone, generates and plays an introduction, then begins recording; listening pauses through processing/playback to avoid feedback. This is hands-free turn-taking with STT + Responses + TTS, not simultaneous full-duplex WebRTC audio. Mobile screen capture remains browser-dependent.
+
+Migration 0004 adds ownership-scoped, idempotent assistant-only introductions. It was applied to the real Supabase project. Questions are saved before inference and save acknowledgments distinguish provider failure from database failure; answers and introductions persist through authenticated RPCs. Provider interruptions and timeouts clear the pending state with an actionable error. The private history and export remain available.
+
+`/api/conversation/status` requires authentication. GET reveals only credential presence, storage readiness, deployment environment and source revision; it never reveals credentials. POST performs an explicit small real inference and consumes an interaction allowance. Settings → Voice exposes this check. The user confirmed MYN_AI_KEY is configured for Vercel Production. That is separate from this cloud instance, whose latest real probe still reports AI_AUTH_FAILED. A credential-presence check is not a successful inference check. The Vercel authentication gate prevents verifying the production runtime from this environment; do not report live production voice or vision as certified.
+
+Validation: 84 unit/API/database checks; 20 Playwright public-flow checks; build and TypeScript. An authenticated Chromium regression using real Supabase auth plus explicitly isolated media/provider fixtures checked desktop, tablet, phone, keyboard and landscape layouts; captured screen-frame forwarding; language selection; and generated introduction before the transcribed voice turn. Real disposable-account integration separately verified auth, ownership isolation, private multilingual storage, usage accounting and deletion, then removed its temporary users. Browser provider fixtures do not certify live provider voice/vision.
+
+Reproduce the authenticated layout regression only with authorized secure Supabase Management configuration: `MYN_TEST_ORIGIN=http://127.0.0.1:3021 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium node --use-env-proxy --use-system-ca scripts/verify-conversation-layout.mjs`. An already running fresh production build is required at the supplied local origin. Optional `MYN_PROVIDER_CHECK=1` on `scripts/verify-platform.mjs` runs the bounded real provider probe; avoid repeated paid checks once its result is known.

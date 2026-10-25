@@ -1,6 +1,6 @@
 # myn.
 
-The AI that shows you where to click.
+Your next step, together.
 
 A new Next.js application with Supabase accounts and private session storage, OpenAI visual guidance and voice, and Stripe subscription integrations. External services must be configured before the authenticated experience can be exercised. This is an initial implementation, not the complete production product specified in `docs/specification.md`.
 
@@ -41,7 +41,7 @@ Os comandos `dev` e `start` usam as opções nativas do Node 24 para respeitar o
 
 - `app/`: App Router pages and authenticated server APIs.
 - `components/`: landing, dashboard, session controls, history, agents, account and billing.
-- `lib/ai/`: replaceable provider interface; OpenAI Responses structured visual analysis and streaming Wake text.
+- `lib/ai/`: replaceable provider interface; OpenAI Responses streaming text and images, speech transcription and playback.
 - `lib/vision/`: local compressed screen-frame extraction, change detection utility.
 - `lib/auth/`: Supabase SSR and browser clients; `proxy.ts` refreshes cookies.
 - `lib/billing/`: billing adapter and Stripe integration.
@@ -52,18 +52,26 @@ Screenshots are analyzed on demand only, never inserted into the database. Scree
 
 ## Ativar mentor, voz e histórico
 
-Se o dashboard informa que o histórico não está disponível, as tabelas/RPCs do banco ainda não foram instaladas. Abra `/app/setup` na aplicação e siga as instruções para o proprietário executar `public/setup/myn-database.sql` no SQL Editor do Supabase. O bootstrap é repetível e inclui ambas as migrações. Ele preserva conversas e configurações existentes e cria perfis para usuários que se cadastraram antes da instalação.
+Se o dashboard informa que o histórico não está disponível, as tabelas/RPCs do banco ainda não foram instaladas. Abra `/app/setup` na aplicação e siga as instruções para o proprietário executar `public/setup/myn-database.sql` no SQL Editor do Supabase. O bootstrap é repetível e inclui as quatro migrações. Ele preserva conversas e configurações existentes e cria perfis para usuários que se cadastraram antes da instalação.
 
 Para instalação por automação, disponibilize `SUPABASE_ACCESS_TOKEN` com destino HTTPS `api.supabase.com` em configurações seguras e execute `npm run db:setup`. Esse token é administrativo e não deve ser configurado com prefixo público nem colocado no chat ou Git. Um token de serviço/anon não substitui o Management API token para executar DDL.
 
 Na Vercel, configure também `MYN_AI_KEY` e as duas variáveis públicas de Supabase. As configurações do ambiente de desenvolvimento não são copiadas automaticamente para a Vercel. A chave OpenAI precisa ser válida e ter créditos/permissões de modelos. Faça redeploy após alterar variáveis.
 
-Depois do deploy e do banco instalado, entre na conta, abra **Guide** em `/app/guide` e selecione **Conversar com mentor / Talk to your mentor**. A área `/try` continua sendo somente um teste local de dispositivos e não conversa com a IA.
+Depois do deploy e do banco instalado, entre na conta, abra **Elo** em `/app/elo` e toque no microfone **Conversar por voz**. A área `/try` continua sendo somente um teste local de dispositivos e não conversa com a IA.
 
 ## Elo e estado atual
 
 A navegação principal agora é Home, Elo e Agente. Elo reúne texto, voz e tela em `/app/elo`; histórico e assinatura ficam em `/app/settings/history` e `/app/settings/billing`. Os links antigos são mantidos por redirecionamento.
 
-As três migrações foram aplicadas ao projeto Supabase configurado. Login real, persistência, RLS e exclusão da própria conta foram verificados com contas descartáveis e limpeza ao final. O teste real de inferência neste ambiente retornou `401 invalid_api_key`; a configuração e os créditos do provedor no deploy precisam ser verificados separadamente. Veja `docs/elo-platform.md`.
+As quatro migrações foram aplicadas ao projeto Supabase configurado. Login real, persistência, RLS e exclusão da própria conta foram verificados com contas descartáveis e limpeza ao final. O teste real de inferência neste ambiente retornou `401 invalid_api_key`; a configuração e os créditos do provedor no deploy precisam ser verificados separadamente. Veja `docs/elo-platform.md`.
 
 `SUPABASE_SERVICE_ROLE_KEY` permanece opcional para administração e webhooks de cobrança; não é necessária para o fluxo normal de conversa nem para a exclusão da própria conta. O token Management não deve ser copiado para o navegador.
+
+## Testar a conversa publicada
+
+Em **Configurações → Voz**, a seção **Conexão da conversa** identifica o ambiente, a versão publicada, a presença da credencial no servidor e a disponibilidade do histórico. **Testar conexão** faz uma pequena chamada real e usa uma interação da franquia. Uma variável cadastrada em Production só chega a deployments criados depois da alteração; uma URL antiga de preview pode continuar usando outra configuração. Não envie chaves pelo chat.
+
+Em Elo, o microfone inicia uma apresentação gerada, depois escuta perguntas, transcreve e responde por texto e áudio. O olho inclui uma imagem atual da janela compartilhada em cada pergunta. O controle de idioma pode ser alterado durante a conversa e vale para a próxima resposta. Voz funciona por turnos com detecção de pausa; não usa uma conexão WebRTC de áudio simultâneo. O navegador precisa permitir microfone e reprodução. A captura de tela depende do suporte do navegador.
+
+Validação e limites atuais: [docs/elo-platform.md](docs/elo-platform.md).

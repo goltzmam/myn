@@ -22,6 +22,9 @@ beforeAll(async () => {
     readFileSync("supabase/migrations/0003_account_deletion.sql", "utf8"),
   );
   await db.exec(
+    readFileSync("supabase/migrations/0004_voice_welcome.sql", "utf8"),
+  );
+  await db.exec(
     `grant usage on schema public,auth to authenticated;grant select,insert,update,delete on all tables in schema public to authenticated;insert into auth.users(id) values('${alice}'),('${bob}'); insert into sessions(id,user_id,mode,title) values('${session}','${alice}','guide','Database setup');set role authenticated;select set_config('request.jwt.claim.sub','${alice}',false);`,
   );
 });
@@ -128,6 +131,22 @@ it("separates audio and analysis rate limits for natural voice turns", async () 
     (await db.query("select * from usage_events where event_type='audio'"))
       .rows,
   ).toHaveLength(12);
+});
+it("a spoken introduction persists only the assistant, without inventing a user message", async () => {
+  const turn = crypto.randomUUID();
+  await db.query("select save_welcome($1,$2,$3,$4)", [
+    session,
+    turn,
+    "Olá! Sou a MYN. Vamos conversar?",
+    20,
+  ]);
+  const result = await db.query<{ role: string; content: string }>(
+    "select role,content from messages where turn_id=$1",
+    [turn],
+  );
+  expect(result.rows).toEqual([
+    { role: "assistant", content: "Olá! Sou a MYN. Vamos conversar?" },
+  ]);
 });
 it("enforces rate limit in persistent database", async () => {
   for (let i = 0; i < 20; i++)

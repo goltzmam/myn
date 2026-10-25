@@ -47,15 +47,17 @@ export async function POST(req: Request) {
         );
       await activeSession(client, user.id, sessionId);
       await reserve(client, sessionId, "audio");
-      const result = await openai().audio.transcriptions.create({
-        file,
-        model: process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
-        ...(language !== "auto"
-          ? { language: new Intl.Locale(language).language }
-          : {}),
-        prompt:
-          "Transcribe faithfully in the original spoken language and script. Do not translate.",
-      });
+      const result = await openai().audio.transcriptions.create(
+        {
+          file,
+          model:
+            process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
+
+          prompt:
+            "Transcribe faithfully in the original spoken language and script. Do not translate.",
+        },
+        { signal: req.signal },
+      );
       if (!result.text.trim())
         throw new AppError(
           "TRANSCRIPTION_EMPTY",
@@ -70,13 +72,16 @@ export async function POST(req: Request) {
     const body = speechSchema.parse(await req.json());
     await activeSession(client, user.id, body.sessionId);
     await reserve(client, body.sessionId, "audio");
-    const audio = await openai().audio.speech.create({
-      model: process.env.OPENAI_SPEECH_MODEL || "gpt-4o-mini-tts",
-      voice: "coral",
-      input: body.text,
-      instructions:
-        "You are a warm, clear mentor. Speak naturally in the language of the supplied text, preserving its pronunciation and script. Do not translate. Use a calm conversational pace.",
-    });
+    const audio = await openai().audio.speech.create(
+      {
+        model: process.env.OPENAI_SPEECH_MODEL || "gpt-4o-mini-tts",
+        voice: "coral",
+        input: body.text,
+        instructions:
+          "You are a warm, clear mentor. Speak naturally in the language of the supplied text, preserving its pronunciation and script. Do not translate. Use a calm conversational pace.",
+      },
+      { signal: req.signal },
+    );
     return new Response(await audio.arrayBuffer(), {
       headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
     });
