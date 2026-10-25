@@ -259,6 +259,13 @@ try {
     "language selection stays enabled",
   );
   await page.getByLabel("Alterar idioma").click();
+  const spokenResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/chat") &&
+      response.request().postDataJSON()?.message ===
+        "Uma pergunta falada de teste.",
+    { timeout: 15000 },
+  );
   await page
     .getByRole("button", { name: "Conversar por voz", exact: true })
     .click();
@@ -270,9 +277,13 @@ try {
     () => document.body.textContent.includes("Uma pergunta falada de teste."),
     { timeout: 15000 },
   );
+  await spokenResponse;
+  const welcomeIndex = turns.findIndex((t) => t.kind === "welcome"),
+    questionIndex = turns.findIndex(
+      (t) => t.message === "Uma pergunta falada de teste.",
+    );
   assert(
-    turns.some((t) => t.kind === "welcome") &&
-      turns.some((t) => t.message === "Uma pergunta falada de teste."),
+    welcomeIndex >= 0 && questionIndex > welcomeIndex,
     "generated introduction precedes a transcribed voice turn",
   );
   await page
