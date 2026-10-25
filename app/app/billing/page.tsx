@@ -1,4 +1,4 @@
-import { Billing } from "@/components/billing";
+import { redirect } from "next/navigation";
 export default function Page() {
-  return <Billing />;
+  redirect("/app/settings/billing");
 }

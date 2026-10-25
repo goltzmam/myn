@@ -48,3 +48,10 @@ Configure Supabase and OpenAI, restart/rebuild, then execute the 13-step Guide a
 ## Mentor bug fix (latest)
 
 See `mentor-fix.md` for the current behavior, setup requirement and test scope. The latest validation completed 59 unit/integration/database tests and 15 Playwright checks successfully, with production build and TypeScript checks passing. The new hands-free mentor loop supersedes the earlier description of manual-only voice. It remains a turn-based transcription/reasoning/speech pipeline, not a WebRTC Realtime connection. Real Supabase tables are still missing (PGRST205), so the complete authenticated production acceptance journey remains blocked on database initialization and real provider credentials/credits. No remote migration or production deployment success is claimed by these local test results.
+
+
+## Atualização Elo e infraestrutura real (mais recente)
+
+A condição anterior de tabelas ausentes foi resolvida: migrações 0001/0002/0003 aplicadas no Supabase real. Doze tabelas com RLS foram verificadas, e o login, os perfis, as sessões, o histórico, o isolamento entre contas, as regras de assinatura e a exclusão própria passaram em verificações reais com usuários temporários removidos ao final. O teste de cookie assinado do Next.js também passou. O resultado não certifica entrega de emails de cadastro/redefinição ou configuração Stripe.
+
+A UX foi redesenhada para Home, Elo e Agente; configurações incluem histórico e assinatura. Ver `elo-platform.md` para as mudanças, verificação visual autenticada, limites e requisitos de provedor. A chamada real de visão ainda retornou 401 invalid_api_key neste ambiente; não há alegação de voz real verificada.

@@ -3,30 +3,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   House,
-  AudioLines,
-  ScanEye,
-  Radio,
+  Eye,
   Shapes,
-  History,
-  CreditCard,
   Settings,
+  Plus,
   LogOut,
-  ArrowUpRight,
-  ShieldCheck,
+  Menu,
+  X,
 } from "lucide-react";
+import { useState } from "react";
 import { usePreferences } from "@/stores/preferences";
-import { translations } from "@/lib/i18n";
 import { browserDb } from "@/lib/auth/client";
-const items = [
-  ["home", "/app", House],
-  ["wake", "/app/wake", AudioLines],
-  ["guide", "/app/guide", ScanEye],
-  ["live", "/app/live", Radio],
-  ["agents", "/app/agents", Shapes],
-  ["history", "/app/history", History],
-  ["billing", "/app/billing", CreditCard],
-  ["settings", "/app/settings", Settings],
-] as const;
 export function Shell({
   children,
   email,
@@ -38,99 +25,125 @@ export function Shell({
 }) {
   const pathname = usePathname(),
     router = useRouter(),
-    { language, setLanguage } = usePreferences(),
-    t = translations[language];
+    pt = usePreferences((s) => s.language) === "pt-BR",
+    [open, setOpen] = useState(false),
+    base = preview ? "/try" : "/app";
+  const items = [
+    { href: base, label: "Home", Icon: House },
+    { href: base + "/elo", label: "Elo", Icon: Eye },
+    { href: base + "/agents", label: pt ? "Agente" : "Agents", Icon: Shapes },
+  ];
+  const settings =
+    pathname.includes("/settings") ||
+    pathname.includes("/history") ||
+    pathname.includes("/billing");
+  const title = settings
+    ? pt
+      ? "Configurações"
+      : "Settings"
+    : pathname.includes("/agents")
+      ? pt
+        ? "Agente"
+        : "Agents"
+      : pathname === base
+        ? "Home"
+        : "Elo";
+  const active = (href: string) =>
+    href === base
+      ? pathname === base
+      : pathname.startsWith(href) ||
+        (href.endsWith("/elo") &&
+          ["/wake", "/guide", "/live"].some((p) =>
+            pathname.startsWith(base + p),
+          ));
   return (
-    <div className="app-shell">
+    <div className={"app-shell refined-shell " + (open ? "menu-open" : "")}>
+      <button
+        className="sidebar-scrim"
+        aria-label={pt ? "Fechar menu" : "Close menu"}
+        onClick={() => setOpen(false)}
+      />
       <aside className="sidebar">
-        <Link href={preview ? "/try" : "/app"} className="logo">
+        <Link href={base} className="logo" onClick={() => setOpen(false)}>
           myn<span>.</span>
         </Link>
-        <div className="workspace-label">YOUR WORKSPACE</div>
-        <nav>
-          {items.map(([key, url, Icon]) => (
+        <nav aria-label={pt ? "Navegação principal" : "Main navigation"}>
+          {items.map(({ href, label, Icon }) => (
             <Link
-              key={key}
-              href={preview ? url.replace("/app", "/try") : url}
-              className={
-                pathname === (preview ? url.replace("/app", "/try") : url) ||
-                (url != "/app" &&
-                  pathname.startsWith(
-                    preview ? url.replace("/app", "/try") : url,
-                  ))
-                  ? "nav-link selected"
-                  : "nav-link"
-              }
+              key={href}
+              href={href}
+              className={"nav-link " + (active(href) ? "selected" : "")}
+              aria-current={active(href) ? "page" : undefined}
+              onClick={() => setOpen(false)}
             >
-              <Icon size={18} />
-              {t[key]}
-              {key === "guide" && <span className="tiny-tag">CORE</span>}
+              <Icon size={19} />
+              {label}
             </Link>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="upgrade">
-            <span className="eyebrow">A LITTLE MORE POSSIBILITY</span>
-            <h3>Find your flow.</h3>
-            <p>More time for your big ideas.</p>
-            <Link href={preview ? "/try/billing" : "/app/billing"}>
-              Explore Pro <ArrowUpRight size={15} />
-            </Link>
-          </div>
-          <button
-            className="user-profile"
-            onClick={async () => {
-              if (!preview) await browserDb().auth.signOut();
-              router.push("/login");
-              router.refresh();
-            }}
-            title="Sign out"
+          <Link
+            href={base + "/settings"}
+            className={"nav-link " + (settings ? "selected" : "")}
+            aria-current={settings ? "page" : undefined}
+            onClick={() => setOpen(false)}
           >
+            <Settings size={19} />
+            {pt ? "Configurações" : "Settings"}
+          </Link>
+          <div className="account-row">
             <span className="avatar">{email[0]?.toUpperCase()}</span>
             <span>
-              {email.split("@")[0]}
-              <small>Personal workspace</small>
+              {preview ? (pt ? "Visitante" : "Guest") : email.split("@")[0]}
             </span>
-            <LogOut size={15} />
-          </button>
+            <button
+              className="icon-button"
+              title={pt ? "Sair" : "Sign out"}
+              aria-label={pt ? "Sair" : "Sign out"}
+              onClick={async () => {
+                if (!preview) await browserDb().auth.signOut();
+                router.push("/login");
+                router.refresh();
+              }}
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
       <div className="main-shell">
         <header className="app-header">
-          <span>
-            <span className="status-dot" />{" "}
-            {preview ? "EXPERIMENTAR · SEM CONTA" : "YOUR AI WORKSPACE"}
-          </span>
-          <div>
-            <select
-              aria-label="Language"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as "en" | "pt-BR")}
+          <div className="header-location">
+            <button
+              className="mobile-menu icon-button"
+              aria-label={pt ? "Abrir menu" : "Open menu"}
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
             >
-              <option value="en">English</option>
-              <option value="pt-BR">Português</option>
-            </select>
-            <span className="privacy-pill">
-              <ShieldCheck size={14} /> Private by design
-            </span>
+              {open ? <X size={18} /> : <Menu size={18} />}
+            </button>
+            <span>{title}</span>
           </div>
+          <button
+            className="new-conversation"
+            title={pt ? "Nova conversa" : "New conversation"}
+            onClick={() => router.push(base + "/elo?new=" + Date.now())}
+          >
+            <Plus size={17} />
+            <span>{pt ? "Nova conversa" : "New conversation"}</span>
+          </button>
         </header>
         <main className="app-content">
           {preview && (
-            <div className="try-banner">
-              <strong>Experimentar MYN</strong>
-              <span>
-                Tela e microfone locais. Sem respostas simuladas de IA.
-              </span>
-              <Link href="/signup">Criar minha conta →</Link>
+            <div className="preview-note">
+              {pt
+                ? "Conheça seu espaço. Entre para continuar uma conversa."
+                : "Explore your space. Sign in to start a conversation."}
+              <Link href="/login">{pt ? "Entrar" : "Sign in"} →</Link>
             </div>
           )}
           {children}
         </main>
-        <footer className="app-footer">
-          <span>Less friction. More possibility.</span>
-          <span>myn. · Your everyday co-pilot</span>
-        </footer>
       </div>
     </div>
   );

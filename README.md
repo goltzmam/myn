@@ -59,3 +59,11 @@ Para instalação por automação, disponibilize `SUPABASE_ACCESS_TOKEN` com des
 Na Vercel, configure também `MYN_AI_KEY` e as duas variáveis públicas de Supabase. As configurações do ambiente de desenvolvimento não são copiadas automaticamente para a Vercel. A chave OpenAI precisa ser válida e ter créditos/permissões de modelos. Faça redeploy após alterar variáveis.
 
 Depois do deploy e do banco instalado, entre na conta, abra **Guide** em `/app/guide` e selecione **Conversar com mentor / Talk to your mentor**. A área `/try` continua sendo somente um teste local de dispositivos e não conversa com a IA.
+
+## Elo e estado atual
+
+A navegação principal agora é Home, Elo e Agente. Elo reúne texto, voz e tela em `/app/elo`; histórico e assinatura ficam em `/app/settings/history` e `/app/settings/billing`. Os links antigos são mantidos por redirecionamento.
+
+As três migrações foram aplicadas ao projeto Supabase configurado. Login real, persistência, RLS e exclusão da própria conta foram verificados com contas descartáveis e limpeza ao final. O teste real de inferência neste ambiente retornou `401 invalid_api_key`; a configuração e os créditos do provedor no deploy precisam ser verificados separadamente. Veja `docs/elo-platform.md`.
+
+`SUPABASE_SERVICE_ROLE_KEY` permanece opcional para administração e webhooks de cobrança; não é necessária para o fluxo normal de conversa nem para a exclusão da própria conta. O token Management não deve ser copiado para o navegador.

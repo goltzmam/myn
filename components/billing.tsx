@@ -2,7 +2,13 @@
 import { useEffect, useState } from "react";
 import { browserDb } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
-export function Billing() {
+export function Billing({
+  availablePlans = [],
+  portalEnabled = false,
+}: {
+  availablePlans?: string[];
+  portalEnabled?: boolean;
+}) {
   const [plans, setPlans] = useState<
       {
         id: string;
@@ -66,10 +72,9 @@ export function Billing() {
   }
   return (
     <>
-      <span className="eyebrow">ROOM TO GROW</span>
-      <h1>Find the right flow for you.</h1>
+      <h2>Find the right flow for you.</h2>
       <p>
-        Current plan: {current} · {usage} AI requests this month
+        Current plan: {current} · {usage} interactions this month
       </p>
       <p role="alert" className="error">
         {error}
@@ -78,28 +83,41 @@ export function Billing() {
         {plans.map((p) => (
           <div className="surface" key={p.id}>
             <h2>{p.name}</h2>
-            <h1>
+            <p className="plan-price">
               ${p.price_monthly}
               <small>/mo</small>
-            </h1>
+            </p>
             <p>{p.analysis_limit} guidance requests</p>
             <p>{p.audio_limit} audio requests</p>
             <Button
-              disabled={busy || p.id === "free" || p.id === current}
+              disabled={
+                busy ||
+                p.id === "free" ||
+                p.id === current ||
+                !availablePlans.includes(p.id)
+              }
               onClick={() => pay(p.id)}
             >
-              {p.id === current ? "Current plan" : "Choose " + p.name}
+              {p.id === current
+                ? "Current plan"
+                : availablePlans.includes(p.id)
+                  ? "Choose " + p.name
+                  : "Coming soon"}
             </Button>
           </div>
         ))}
       </div>
-      <Button variant="secondary" disabled={busy} onClick={() => pay()}>
+      <Button
+        variant="secondary"
+        disabled={busy || current === "free" || !portalEnabled}
+        onClick={() => pay()}
+      >
         Manage subscription & invoices
       </Button>
       <p className="fineprint">
         Audio requests include transcription and speech output. Requests reserve
         quota before processing; provider failures also consume a reservation.
-        Team workspaces and continuous voice are not yet available.
+        Team workspaces are not yet available.
       </p>
     </>
   );

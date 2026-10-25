@@ -11,7 +11,7 @@ import {
 export function Marketing({ page = "home" }: { page?: string }) {
   const title =
     page === "home"
-      ? "The AI that shows you where to click."
+      ? "Your next step, together."
       : page === "features"
         ? "Less friction. More possibility."
         : page === "how-it-works"
@@ -44,17 +44,17 @@ export function Marketing({ page = "home" }: { page?: string }) {
       <main>
         <section className="hero">
           <div className="eyebrow">
-            <span className="status-dot" /> YOUR REAL-TIME VISUAL AI COMPANION
+            <span className="status-dot" /> A LITTLE CLARITY. A WHOLE NEW FLOW.
           </div>
           <h1>{title}</h1>
           <p>
             {page === "privacy"
               ? "Screen sharing requires your explicit permission. MYN analyzes selected frames on demand and does not save screenshots. Questions, answers and summaries are stored in your private session history. Delete sessions or your account in settings. Audio is sent to OpenAI for transcription and synthesis."
               : page === "terms"
-                ? "MYN provides AI-generated guidance that can be inaccurate. Review suggestions before taking action. You control your screen, microphone and all interactions. Billing requires a configured payment provider. These initial terms require legal review before public launch."
+                ? "MYN provides generated guidance that can be inaccurate. Review suggestions before taking action. You control your screen, microphone and all interactions. Billing requires a configured payment provider. These initial terms require legal review before public launch."
                 : page === "download"
                   ? "MYN runs in your browser. Use your browser’s install menu to add it to your desktop. Screen sharing requires a compatible desktop browser and HTTPS. Native desktop apps are not available yet."
-                  : "Share your screen. Ask anything. Get guidance from an AI that understands what you’re working on."}
+                  : "Talk it through. Show what you see. Find your next step, together."}
           </p>
           <div className="hero-actions">
             <Link href="/try" className="button secondary">
@@ -73,7 +73,7 @@ export function Marketing({ page = "home" }: { page?: string }) {
             <div className="hero-demo">
               <div className="demo-bar">
                 <span>● ● ●</span>
-                <span>YOUR WORKSPACE, WITH A LITTLE CLARITY</span>
+                <span>A LITTLE MORE CLARITY</span>
                 <span className="tiny-tag">ILLUSTRATIVE DEMO</span>
               </div>
               <div className="demo-content">
@@ -103,23 +103,19 @@ export function Marketing({ page = "home" }: { page?: string }) {
                   <div className="orb" />
                   <span className="logo">myn.</span>
                   <p>“Let’s take it one step at a time.”</p>
-                  <small>Illustration · No AI session running</small>
+                  <small>Illustration · Not a live conversation</small>
                 </div>
               </div>
             </div>
             <section className="marketing-modes">
               {[
-                [AudioLines, "Wake", "Think out loud."],
-                [ScanEye, "Guide", "See it. Solve it."],
-                [Radio, "Live", "Stay in the moment."],
+                [AudioLines, "Converse", "Think out loud."],
+                [ScanEye, "Share", "A shared perspective."],
+                [Radio, "Continue", "Stay in the moment."],
               ].map(([Icon, name, text]) => {
                 const I = Icon as typeof ScanEye;
                 return (
-                  <Link
-                    href={"/app/" + String(name).toLowerCase()}
-                    className="surface"
-                    key={String(name)}
-                  >
+                  <Link href="/app/elo" className="surface" key={String(name)}>
                     <I size={28} />
                     <h2>{String(name)}</h2>
                     <p>{String(text)}</p>

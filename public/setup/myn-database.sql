@@ -1,4 +1,4 @@
--- MYN: run in Supabase SQL Editor. Repeatable; existing conversation data is preserved.
+-- MYN: repeatable setup; existing data is preserved.
 begin;
 create table if not exists public.profiles(id uuid primary key references auth.users on delete cascade, full_name text not null default '',avatar_url text,language text not null default 'en',created_at timestamptz not null default now());
 create table if not exists public.plans(id text primary key,name text not null,price_monthly numeric not null check(price_monthly>=0),included_minutes integer not null,analysis_limit integer not null,audio_limit integer not null,features jsonb not null default '[]',active boolean not null default true);
@@ -127,4 +127,16 @@ insert into usage_events(user_id,session_id,event_type) values(uid,p_session,p_k
 end $$;
 
 notify pgrst, 'reload schema';
+commit;
+
+begin;
+create or replace function public.delete_own_account() returns void language plpgsql security definer set search_path=pg_catalog,public as $$
+declare uid uuid:=auth.uid(); begin
+if uid is null then raise exception 'Unauthorized'; end if;
+if exists(select 1 from public.subscriptions where user_id=uid and status in ('active','trialing','past_due','unpaid','incomplete','paused')) then raise exception 'Active subscription'; end if;
+delete from auth.users where id=uid;
+end $$;
+revoke all on function public.delete_own_account() from public,anon;
+grant execute on function public.delete_own_account() to authenticated;
+notify pgrst,'reload schema';
 commit;

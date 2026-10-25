@@ -46,3 +46,9 @@ Os valores de Supabase e OpenAI já estão presentes. A autenticação da Respon
 ## Mentor update
 
 See `mentor-fix.md`. The application now supports a hands-free, pause-detected voice conversation loop with automatic language detection. The root bug in the shown dashboard was confirmed as missing Supabase tables, not a screen capture failure. A new website deployment does not install the database. Apply the combined bootstrap before testing `/app/guide`; `/try` remains a device-only test. For one-time automated installation, a secure Supabase Management API token is required. No administrative token was available during code validation.
+
+## Estado após instalação do banco
+
+As três migrações foram aplicadas ao projeto configurado e verificadas com acesso autenticado real. Os requisitos antigos de aplicar manualmente as tabelas deixaram de bloquear essa instância. A exclusão própria agora usa RPC autenticada com escopo do usuário, sem precisar de service-role key no app. Para reproduzir a validação, use `node --use-env-proxy --use-system-ca scripts/verify-platform.mjs` com o token administrativo fornecido de forma segura; contas descartáveis são criadas e removidas. `MYN_TEST_ORIGIN` habilita a checagem de cookie e rotas Next; `MYN_SCREENSHOTS=1` e `PLAYWRIGHT_CHROMIUM_EXECUTABLE` habilitam a inspeção de Home, Elo e histórico autenticados.
+
+O domínio canônico encontrado na configuração de autenticação é `https://myn-gideaos-projects-e50d11cd.vercel.app/`. Não substitua essa configuração por um endereço imutável de deployment sem necessidade. Credenciais do ambiente cloud não são copiadas automaticamente para a Vercel. A inferência real ainda retornou 401 neste ambiente, e pagamentos/SMTP/social login permanecem dependentes de configuração específica.

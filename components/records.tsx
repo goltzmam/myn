@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePreferences } from "@/stores/preferences";
 import { browserDb } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,8 @@ import {
   Trash2,
   Search,
   Code2,
+  MessageCircle,
+  Shapes,
 } from "lucide-react";
 type Row = {
   id: string;
@@ -30,6 +33,9 @@ export function Records({
   kind: "agents" | "history";
   id?: string;
 }) {
+  const RecordIcon = kind === "history" ? MessageCircle : Shapes;
+  const Heading = kind === "history" ? "h2" : "h1";
+  const pt = usePreferences((s) => s.language) === "pt-BR";
   const [rows, setRows] = useState<Row[]>([]),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
@@ -113,7 +119,9 @@ export function Records({
       .delete()
       .eq("id", id);
     if (error) setError(error.message);
-    else location.href = "/app/" + kind;
+    else
+      location.href =
+        kind === "history" ? "/app/settings/history" : "/app/agents";
   }
   function download() {
     const blob = new Blob(
@@ -137,12 +145,15 @@ export function Records({
     <>
       <div className="session-heading">
         <div>
-          <span className="eyebrow">YOUR WORKSPACE</span>
-          <h1>
+          <Heading>
             {kind === "agents"
-              ? "A little expertise. A big difference."
-              : "Every step, remembered."}
-          </h1>
+              ? pt
+                ? "Quem acompanha você?"
+                : "Find your perspective."
+              : pt
+                ? "Suas conversas."
+                : "Your conversations."}
+          </Heading>
         </div>
         {kind === "agents" && (
           <Link href="/app/agents/new" className="button primary">
@@ -158,7 +169,13 @@ export function Records({
       )}
       {loading && (
         <p role="status" className="skeleton">
-          Loading your workspace…
+          {kind === "history"
+            ? pt
+              ? "Buscando suas conversas…"
+              : "Loading your conversations…"
+            : pt
+              ? "Buscando seus agentes…"
+              : "Loading your agents…"}
         </p>
       )}
       {id && kind === "agents" ? (
@@ -208,10 +225,7 @@ export function Records({
           <Button>Save agent</Button>
           {id !== "new" && (
             <>
-              <Link
-                href={"/app/guide?agent=" + id}
-                className="button secondary"
-              >
+              <Link href={"/app/elo?agent=" + id} className="button secondary">
                 Start Guide with this agent
               </Link>
               <Button type="button" variant="ghost" onClick={remove}>
@@ -251,9 +265,7 @@ export function Records({
                 >
                   Rename
                 </Button>
-                <Link href={"/app/" + rows[0].mode + "?session=" + id}>
-                  Resume session
-                </Link>
+                <Link href={"/app/elo?session=" + id}>Resume session</Link>
               </div>
               {messages.map((m, i) => (
                 <div className="message" key={i}>
@@ -296,11 +308,15 @@ export function Records({
               )
               .map((r) => (
                 <Link
-                  href={"/app/" + kind + "/" + r.id}
+                  href={
+                    (kind === "history"
+                      ? "/app/settings/history/"
+                      : "/app/agents/") + r.id
+                  }
                   className="surface record-card"
                   key={r.id}
                 >
-                  <Code2 size={24} />
+                  <RecordIcon size={24} />
                   <h2>{r.title || r.name}</h2>
                   <p>{r.description || r.mode}</p>
                   <ArrowUpRight size={18} />

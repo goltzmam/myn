@@ -1,201 +1,170 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
+  ArrowUp,
   ArrowUpRight,
-  AudioLines,
-  ScanEye,
-  Radio,
-  ArrowRight,
-  Code2,
-  Table2,
-  Sparkles,
-  ShieldCheck,
+  Mic,
+  Eye,
+  MessageCircle,
+  CornerDownRight,
 } from "lucide-react";
-import { motion } from "motion/react";
-import { translations } from "@/lib/i18n";
 import { usePreferences } from "@/stores/preferences";
 export function Dashboard({
   sessions,
-  usage,
+  usage: unused,
   basePath = "/app",
 }: {
   sessions: { id: string; title: string; mode: string; started_at: string }[];
   usage: number;
   basePath?: string;
 }) {
-  const t = translations[usePreferences((s) => s.language)];
+  const pt = usePreferences((s) => s.language) === "pt-BR",
+    router = useRouter(),
+    [input, setInput] = useState("");
+  const start = (intent?: string) => {
+    if (intent) {
+      router.push(basePath + "/elo?intent=" + intent);
+      return;
+    }
+    if (input.trim()) {
+      const key = crypto.randomUUID();
+      sessionStorage.setItem("myn-draft:" + key, input.trim());
+      router.push(basePath + "/elo?draft=" + key);
+    } else router.push(basePath + "/elo");
+  };
   return (
-    <>
-      <div className="page-intro">
-        <div className="eyebrow">
-          <span className="star">✳</span> YOUR NEXT CHAPTER STARTS HERE
+    <div className="home-experience">
+      <section className="home-welcome">
+        <div className="elo-mark" aria-hidden="true">
+          <span />
+          <span />
         </div>
-        <h1>{t.headline}</h1>
-        <p>{t.subhead}</p>
-      </div>
-      <div className="section-label">
-        THREE WAYS TO FIND YOUR FLOW <span>Built around the way you work</span>
-      </div>
-      <div className="mode-grid">
-        {[
-          {
-            id: "wake",
-            Icon: AudioLines,
-            title: "Think out loud.",
-            text: "A conversation can change everything. Meet your everyday thinking partner.",
-            label: "Start a conversation",
-            color: "purple",
-          },
-          {
-            id: "guide",
-            Icon: ScanEye,
-            title: "See it. Solve it.",
-            text: "Share your screen. Get step-by-step guidance, right where you need it.",
-            label: "Let’s work through it",
-            color: "mint",
-          },
-          {
-            id: "live",
-            Icon: Radio,
-            title: "Stay in the moment.",
-            text: "Turn your thoughts into clarity with voice assistance that keeps up.",
-            label: "Start a live session",
-            color: "peach",
-          },
-        ].map(({ id, Icon, title, text, label, color }, i) => (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            key={id}
-          >
-            <Link href={basePath + "/" + id} className={"mode-card " + color}>
-              <div className="card-top">
-                <span className="mode-icon">
-                  <Icon size={25} />
-                </span>
-                <span className="mode-name">{id.toUpperCase()}</span>
-                <ArrowUpRight size={18} />
-              </div>
-              <div className={"mode-art " + id}>
-                {id === "wake" ? (
-                  <div className="orb" />
-                ) : id === "guide" ? (
-                  <div className="mini-window">
-                    <div>● ● ●</div>
-                    <span />
-                    <span />
-                    <div className="mini-cursor">↖</div>
-                    <small>Your next step, made clear.</small>
-                  </div>
-                ) : (
-                  <div className="wave">
-                    {Array.from({ length: 25 }, (_, n) => (
-                      <i
-                        key={n}
-                        style={{ height: 14 + Math.sin(n * 1.8) ** 2 * 60 }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-              <h2>{title}</h2>
-              <p>{text}</p>
-              <div className="card-action">
-                {label}
-                <ArrowRight size={17} />
-              </div>
-            </Link>
-          </motion.div>
-        ))}
-      </div>
-      <div className="dashboard-bottom">
-        <section>
-          <div className="section-title">
-            <h2>Pick up where you left off</h2>
-            <Link href={basePath + "/history"}>
-              View history <ArrowUpRight size={14} />
-            </Link>
-          </div>
-          {sessions.length ? (
-            sessions.map((s) => (
-              <Link
-                className="session-row"
-                href={basePath + "/history/" + s.id}
-                key={s.id}
+        <p className="welcome-kicker">
+          {pt ? "Bom ter você por aqui." : "Good to have you here."}
+        </p>
+        <h1>{pt ? "O próximo passo, juntos." : "Your next step, together."}</h1>
+        <form
+          className="home-composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            start();
+          }}
+        >
+          <textarea
+            aria-label={
+              pt ? "O que você tem em mente?" : "What’s on your mind?"
+            }
+            placeholder={
+              pt ? "O que você tem em mente?" : "What’s on your mind?"
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            maxLength={4000}
+            rows={2}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                if (input.trim()) start();
+              }
+            }}
+          />
+          <div className="home-composer-actions">
+            <div>
+              <button
+                type="button"
+                className="composer-tool"
+                aria-label={pt ? "Conversar por voz" : "Talk by voice"}
+                title={pt ? "Conversar por voz" : "Talk by voice"}
+                onClick={() => start("voice")}
               >
-                <span className="session-icon">
-                  <HistoryIcon mode={s.mode} />
-                </span>
-                <div>
-                  <strong>{s.title}</strong>
-                  <small>
-                    {s.mode} · {new Date(s.started_at).toLocaleDateString()}
-                  </small>
-                </div>
-                <ArrowUpRight size={17} />
-              </Link>
-            ))
-          ) : (
-            <div className="empty-state">
-              <Sparkles size={24} />
-              <h3>A fresh start. Endless possibilities.</h3>
-              <p>Your conversations and guided tasks will appear here.</p>
-              <Link href={basePath + "/guide"}>
-                Start your first session <ArrowRight size={15} />
-              </Link>
+                <Mic size={20} />
+              </button>
+              <button
+                type="button"
+                className="composer-tool"
+                aria-label={pt ? "Compartilhar tela" : "Share screen"}
+                title={pt ? "Compartilhar tela" : "Share screen"}
+                onClick={() => start("screen")}
+              >
+                <Eye size={21} />
+              </button>
             </div>
-          )}
-        </section>
-        <section>
-          <div className="section-title">
-            <h2>A little expertise goes a long way</h2>
+            <button
+              className="send-orb"
+              disabled={!input.trim()}
+              aria-label={pt ? "Começar conversa" : "Start conversation"}
+            >
+              <ArrowUp size={20} />
+            </button>
           </div>
-          <Link href={basePath + "/agents"} className="expert-row">
-            <span className="expert-icon">
-              <Code2 size={21} />
-            </span>
-            <div>
-              <strong>Coding Expert</strong>
-              <small>From first line to final deploy.</small>
-            </div>
-            <ArrowUpRight size={16} />
-          </Link>
-          <Link href={basePath + "/agents"} className="expert-row">
-            <span className="expert-icon mint-text">
-              <Table2 size={21} />
-            </span>
-            <div>
-              <strong>Spreadsheet Expert</strong>
-              <small>Make sense of every cell.</small>
-            </div>
-            <ArrowUpRight size={16} />
-          </Link>
-          <div className="usage-note">
-            <ShieldCheck size={16} />
-            <span>
-              {usage} AI requests this month ·{" "}
-              <Link href={basePath + "/billing"}>View usage</Link>
-            </span>
+        </form>
+        <div className="conversation-prompts">
+          {(pt
+            ? [
+                "Me ajude com esta tela",
+                "Quero aprender algo",
+                "Vamos organizar uma ideia",
+              ]
+            : [
+                "Help me with this screen",
+                "I want to learn something",
+                "Let’s work through an idea",
+              ]
+          ).map((text, i) => (
+            <button
+              key={text}
+              onClick={() => {
+                setInput(text);
+                document
+                  .querySelector<HTMLTextAreaElement>(".home-composer textarea")
+                  ?.focus();
+              }}
+            >
+              {i === 0 ? (
+                <Eye size={14} />
+              ) : i === 1 ? (
+                <MessageCircle size={14} />
+              ) : (
+                <CornerDownRight size={14} />
+              )}{" "}
+              {text}
+            </button>
+          ))}
+        </div>
+      </section>
+      {sessions.length > 0 && (
+        <section className="home-recent">
+          <div>
+            <h2>
+              {pt ? "Continuar de onde paramos" : "Pick up where we left off"}
+            </h2>
+            <Link href={basePath + "/settings/history"}>
+              {pt ? "Ver todas" : "View all"}
+              <ArrowUpRight size={14} />
+            </Link>
           </div>
+          {sessions.map((s) => (
+            <Link
+              className="recent-conversation"
+              key={s.id}
+              href={basePath + "/elo?session=" + s.id}
+            >
+              <MessageCircle size={17} />
+              <span>{s.title}</span>
+              <small>
+                {new Date(s.started_at).toLocaleDateString(pt ? "pt-BR" : "en")}
+              </small>
+              <ArrowUpRight size={15} />
+            </Link>
+          ))}
         </section>
-      </div>
-      <div className="flow-note">
-        <span>✳</span>
-        <p>You bring the ambition. We’ll help with the next step.</p>
-        <Link href={basePath + "/guide"}>
-          Find your flow <ArrowRight size={16} />
-        </Link>
-      </div>
-    </>
-  );
-}
-function HistoryIcon({ mode }: { mode: string }) {
-  return mode === "guide" ? (
-    <ScanEye size={20} />
-  ) : mode === "live" ? (
-    <Radio size={20} />
-  ) : (
-    <AudioLines size={20} />
+      )}
+    </div>
   );
 }

@@ -118,12 +118,13 @@ export function errorMessage(
     DATABASE_UNAVAILABLE:
       "Não foi possível acessar seu histórico. Tente novamente em instantes.",
     AI_AUTH_FAILED:
-      "O serviço de IA recusou a credencial configurada. O administrador precisa revisá-la.",
+      "O serviço de conversa recusou a credencial configurada. O administrador precisa revisá-la.",
     AI_CREDITS_REQUIRED:
-      "A conta do provedor de IA está sem créditos. Adicione saldo para conversar com o mentor.",
-    AI_BUSY: "O serviço de IA está ocupado. Tente novamente em instantes.",
+      "A conta do provedor de conversa está sem créditos. Adicione saldo para conversar com o mentor.",
+    AI_BUSY:
+      "O serviço de conversa está ocupado. Tente novamente em instantes.",
     AI_TIMEOUT:
-      "A IA demorou para responder. Sua pergunta continua no histórico; tente novamente.",
+      "A resposta demorou para responder. Sua pergunta continua no histórico; tente novamente.",
     QUOTA_EXCEEDED: "Você atingiu a franquia mensal do seu plano.",
     RATE_LIMITED: "Aguarde alguns instantes antes da próxima pergunta.",
     UNAUTHORIZED: "Entre novamente na sua conta.",

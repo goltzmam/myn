@@ -1,4 +1,4 @@
-import { Session } from "@/components/session";
+import { redirect } from "next/navigation";
 export default function Page() {
-  return <Session mode="live" />;
+  redirect("/app/elo");
 }

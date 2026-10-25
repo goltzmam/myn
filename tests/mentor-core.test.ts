@@ -92,3 +92,24 @@ it("ignores an isolated keyboard spike instead of sending it as a paid speech tu
   expect(a.observe(0, 1300)).toBeNull();
   expect(a.observe(0, 20001)).toBe("silence-timeout");
 });
+
+import { sameOrigin } from "../lib/security";
+it("validates browser origin against the actual Host when Next uses an internal bind address", () => {
+  expect(() =>
+    sameOrigin(
+      new Request("http://0.0.0.0:3000/api/sessions", {
+        headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000" },
+      }),
+    ),
+  ).not.toThrow();
+  expect(() =>
+    sameOrigin(
+      new Request("http://0.0.0.0:3000/api/sessions", {
+        headers: {
+          host: "127.0.0.1:3000",
+          origin: "https://untrusted.example",
+        },
+      }),
+    ),
+  ).toThrow("Forbidden");
+});

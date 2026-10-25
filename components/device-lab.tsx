@@ -175,9 +175,9 @@ export function DeviceLab({
         </div>
         <Link
           className="button primary"
-          href={authenticated ? "/app/guide" : "/login"}
+          href={authenticated ? "/app/elo" : "/login"}
         >
-          {authenticated ? "Abrir Guide" : "Entrar para usar IA"}
+          {authenticated ? "Abrir Elo" : "Entrar para conversar"}
           <ArrowRight size={16} />
         </Link>
       </div>
@@ -203,9 +203,7 @@ export function DeviceLab({
             {sharing && (
               <span className="sharing-status">
                 <span className="status-dot" />
-                {paused
-                  ? "PREVIEW PAUSADO"
-                  : "COMPARTILHAMENTO LOCAL · NÃO ENVIADO À IA"}
+                {paused ? "PREVIEW PAUSADO" : "APENAS NESTE DISPOSITIVO"}
               </span>
             )}
           </div>
@@ -318,7 +316,7 @@ export function DeviceLab({
             <small>
               Nenhuma captura ou gravação deste teste é enviada ao servidor ou
               salva no histórico. Este checklist verifica os dispositivos; ele
-              não simula uma tarefa concluída pela IA.
+              não representa uma conversa ou uma tarefa concluída.
             </small>
           </div>
           <Link

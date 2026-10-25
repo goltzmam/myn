@@ -1,4 +1,4 @@
-import { Records } from "@/components/records";
+import { redirect } from "next/navigation";
 export default function Page() {
-  return <Records kind="history" />;
+  redirect("/app/settings/history");
 }

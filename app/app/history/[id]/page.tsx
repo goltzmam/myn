@@ -1,9 +1,9 @@
-import { Records } from "@/components/records";
+import { redirect } from "next/navigation";
 export default async function Page({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <Records kind="history" id={id} />;
+  redirect("/app/settings/history/" + encodeURIComponent(id));
 }

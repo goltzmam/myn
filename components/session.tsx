@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Eye,
   Mic,
   Square,
   MonitorUp,
@@ -33,13 +34,25 @@ type Message = {
   saved?: boolean;
 };
 type Phase = "idle" | "transcribing" | "thinking" | "speaking";
-export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
+export function Session({
+  mode,
+  compact = false,
+  initialMessage,
+  draftKey,
+  intent,
+}: {
+  mode: "wake" | "guide" | "live";
+  compact?: boolean;
+  initialMessage?: string;
+  draftKey?: string;
+  intent?: string;
+}) {
   const router = useRouter(),
     { language, speechLanguage, setSpeechLanguage } = usePreferences(),
     t = translations[language],
     pt = language === "pt-BR";
   const [messages, setMessages] = useState<Message[]>([]),
-    [input, setInput] = useState(""),
+    [input, setInput] = useState(initialMessage || ""),
     [sessionId, setSessionId] = useState<string>(),
     [busy, setBusy] = useState(false),
     [phase, setPhase] = useState<Phase>("idle"),
@@ -48,7 +61,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
     [audioError, setAudioError] = useState(""),
     [sharing, setSharing] = useState(false),
     [paused, setPaused] = useState(false),
-    [speak, setSpeak] = useState(true),
+    [speak, setSpeak] = useState(!compact),
     [guidance, setGuidance] = useState<Guidance>(),
     [audioUrl, setAudioUrl] = useState<string>(),
     [lastReply, setLastReply] = useState(""),
@@ -61,9 +74,24 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
     alive = useRef(true),
     lock = useRef(false),
     idRef = useRef<string>(undefined),
+    sessionMode = useRef(mode),
     screenState = useRef({ sharing, paused }),
     options = useRef({ speak, speechLanguage }),
     sessionPromise = useRef<Promise<string>>(null);
+  const launched = useRef(false);
+  useEffect(() => {
+    if (!compact || !draftKey) return;
+    const timer = setTimeout(() => {
+      if (launched.current) return;
+      const key = "myn-draft:" + draftKey;
+      const draft = sessionStorage.getItem(key);
+      if (!draft) return;
+      sessionStorage.removeItem(key);
+      launched.current = true;
+      void send(draft.slice(0, 4000)).catch(() => {});
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
   screenState.current = { sharing, paused };
   options.current = { speak, speechLanguage };
   function showError(e: unknown) {
@@ -233,7 +261,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
           ? await frame(video.current)
           : undefined;
       let reply = "";
-      if (mode === "wake" && !image) {
+      if (sessionMode.current === "wake" && !image) {
         const response = await json("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -400,7 +428,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
           .select("id,mode")
           .eq("id", id)
           .single();
-        if (error || !session || session.mode !== mode)
+        if (error || !session || (!compact && session.mode !== mode))
           throw new Error("Session unavailable");
         const { error: updateError } = await client
           .from("sessions")
@@ -418,6 +446,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
           .order("created_at");
         if (historyError) throw historyError;
         if (alive.current) {
+          sessionMode.current = session.mode;
           idRef.current = id;
           setSessionId(id);
           setMessages((data || []).map((m) => ({ ...m, saved: true })));
@@ -518,7 +547,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
         showError(error);
         return;
       }
-      router.push("/app/history/" + sessionId);
+      router.push("/app/settings/history/" + sessionId);
     }
   }
   function exportTranscript() {
@@ -560,14 +589,30 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
               : "Preparing microphone…"
             : t.ready;
   return (
-    <>
+    <div
+      className={
+        compact
+          ? "elo-session " +
+            (sharing ? "is-sharing " : "") +
+            (messages.length ? "has-messages" : "")
+          : ""
+      }
+    >
       <div className="session-heading">
         <div>
           <span className="eyebrow">
-            {mode.toUpperCase()} · {status}
+            {compact ? "Elo" : mode.toUpperCase()} · {status}
           </span>
           <h1>
-            {pt ? "Seu mentor, ao seu lado." : "Your mentor, right beside you."}
+            {compact
+              ? messages.length
+                ? "Elo"
+                : pt
+                  ? "Vamos dar o próximo passo?"
+                  : "Let’s take the next step."
+              : pt
+                ? "Seu mentor, ao seu lado."
+                : "Your mentor, right beside you."}
           </h1>
           <p>
             {pt
@@ -579,7 +624,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
           {sessionId && (
             <Link
               className="button secondary"
-              href={"/app/history/" + sessionId}
+              href={"/app/settings/history/" + sessionId}
             >
               {t.history}
             </Link>
@@ -593,6 +638,64 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
           </Button>
         </div>
       </div>
+      {compact &&
+        !messages.length &&
+        !sharing &&
+        !voice.active &&
+        ["voice", "screen"].includes(intent || "") && (
+          <button
+            className="elo-invitation"
+            disabled={busy}
+            onClick={() =>
+              intent === "screen" ? void share() : void startMentor()
+            }
+          >
+            {intent === "screen" ? <Eye size={26} /> : <Mic size={26} />}
+            <span>
+              {intent === "screen"
+                ? pt
+                  ? "Vamos olhar juntos"
+                  : "Let’s look together"
+                : pt
+                  ? "Vamos conversar"
+                  : "Let’s talk"}
+            </span>
+          </button>
+        )}
+      {compact && voice.active && (
+        <div className="elo-voice-status">
+          <span className="status-dot" />
+          {status}
+          <button onClick={stopMentor}>{pt ? "Parar" : "Stop"}</button>
+        </div>
+      )}
+      {compact && (
+        <details className="elo-preferences">
+          <summary>
+            {pt ? "Preferências da conversa" : "Conversation preferences"}
+          </summary>
+          <label>
+            {pt ? "Idioma" : "Language"}
+            <input
+              value={speechLanguage}
+              maxLength={35}
+              onChange={(e) => setSpeechLanguage(e.target.value)}
+              placeholder="auto"
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={speak}
+              onChange={(e) => setSpeak(e.target.checked)}
+            />
+            {pt ? "Ouvir respostas" : "Read responses aloud"}
+          </label>
+          <Link href="/app/settings/privacy">
+            {pt ? "Sobre suas conversas" : "About your conversations"}
+          </Link>
+        </details>
+      )}
       <div className="mentor-toolbar surface">
         <div>
           <Button
@@ -678,7 +781,7 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
                 </h2>
                 <p>
                   {pt
-                    ? "A IA analisa uma imagem atual da tela a cada pergunta."
+                    ? "Um novo olhar para a sua tela a cada pergunta."
                     : "A current screen image is analyzed with each question."}
                 </p>
               </div>
@@ -784,14 +887,43 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
               disabled={busy || voice.active}
             />
             <div>
+              {compact && (
+                <button
+                  type="button"
+                  className={"composer-tool " + (sharing ? "tool-active" : "")}
+                  aria-label={sharing ? t.stop : t.share}
+                  title={sharing ? t.stop : t.share}
+                  onClick={() => (sharing ? stopScreen() : void share())}
+                >
+                  <Eye size={21} />
+                </button>
+              )}
               <button
                 type="button"
                 className={
                   "icon-button " + (voice.listening ? "recording" : "")
                 }
                 disabled={busy || (voice.active && !voice.listening)}
-                onClick={() => void manualMic()}
-                aria-label={voice.listening ? t.stopRecord : t.listen}
+                onClick={() =>
+                  compact
+                    ? voice.active
+                      ? stopMentor()
+                      : void startMentor()
+                    : void manualMic()
+                }
+                aria-label={
+                  compact
+                    ? voice.active
+                      ? pt
+                        ? "Parar conversa"
+                        : "Stop conversation"
+                      : pt
+                        ? "Conversar por voz"
+                        : "Talk by voice"
+                    : voice.listening
+                      ? t.stopRecord
+                      : t.listen
+                }
               >
                 {voice.listening ? <Square size={18} /> : <Mic size={18} />}
               </button>
@@ -923,12 +1055,12 @@ export function Session({ mode }: { mode: "wake" | "guide" | "live" }) {
             </p>
             <small>
               {pt
-                ? "A voz é gerada por IA. A escuta pausa durante a resposta para evitar retorno de áudio. O microfone encerra ao parar o mentor ou sair."
-                : "The voice is AI-generated. Listening pauses while the mentor responds to avoid feedback. Stopping the mentor or leaving releases the microphone."}
+                ? "A escuta pausa durante a resposta. Pare a conversa ou saia para encerrar o microfone."
+                : "Listening pauses during each reply. Stop the conversation or leave to release the microphone."}
             </small>
           </div>
         </aside>
       </div>
-    </>
+    </div>
   );
 }

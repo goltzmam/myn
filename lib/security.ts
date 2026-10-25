@@ -2,8 +2,16 @@ import { NextResponse } from "next/server";
 import { publicError } from "@/lib/errors";
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
-  if (origin && origin !== new URL(req.url).origin)
+  if (!origin) return;
+  const expected = new URL(req.url);
+  const host = req.headers.get("host");
+  if (host) expected.host = host;
+  try {
+    if (new URL(origin).origin !== expected.origin)
+      throw new Error("Forbidden");
+  } catch {
     throw new Error("Forbidden");
+  }
 }
 export function failure(error: unknown) {
   const e = publicError(error);

@@ -7,7 +7,7 @@ export default async function Page({
   params: Promise<{ section: string }>;
 }) {
   const { section } = await params;
-  if (["guide", "wake", "live", "settings"].includes(section))
+  if (["elo", "guide", "wake", "live", "settings"].includes(section))
     return <DeviceLab mode={section} />;
   if (!["agents", "history", "billing"].includes(section)) notFound();
   return (

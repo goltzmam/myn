@@ -235,3 +235,43 @@ it("offers a visible player when the browser blocks automatic audio", async () =
   ).toBe("mentor-audio");
   expect(screen.getByText(reply)).toBeTruthy();
 });
+
+it("untrusted URL text only prefills and cannot automatically spend quota", async () => {
+  render(
+    React.createElement(Session, {
+      mode: "guide",
+      compact: true,
+      initialMessage: "Untrusted incoming link",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "O que você quer realizar?",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Untrusted incoming link"),
+  );
+  expect(calls).toHaveLength(0);
+});
+it("an intentional Home handoff is consumed once, even in StrictMode", async () => {
+  const key = crypto.randomUUID();
+  sessionStorage.setItem("myn-draft:" + key, "Minha pergunta");
+  render(
+    React.createElement(
+      React.StrictMode,
+      null,
+      React.createElement(Session, {
+        mode: "guide",
+        compact: true,
+        draftKey: key,
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(calls.filter((c) => c.url === "/api/assist")).toHaveLength(1),
+  );
+  expect(sessionStorage.getItem("myn-draft:" + key)).toBeNull();
+  await waitFor(() => expect(screen.getByText(reply)).toBeTruthy());
+});

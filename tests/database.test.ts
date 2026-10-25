@@ -19,6 +19,9 @@ beforeAll(async () => {
     readFileSync("supabase/migrations/0002_mentor_transcripts.sql", "utf8"),
   );
   await db.exec(
+    readFileSync("supabase/migrations/0003_account_deletion.sql", "utf8"),
+  );
+  await db.exec(
     `grant usage on schema public,auth to authenticated;grant select,insert,update,delete on all tables in schema public to authenticated;insert into auth.users(id) values('${alice}'),('${bob}'); insert into sessions(id,user_id,mode,title) values('${session}','${alice}','guide','Database setup');set role authenticated;select set_config('request.jwt.claim.sub','${alice}',false);`,
   );
 });
@@ -171,4 +174,22 @@ it("processes signed billing events idempotently and ignores stale updates", asy
     [alice],
   );
   expect(result.rows[0]).toMatchObject({ plan_id: "max", status: "active" });
+});
+
+it("account deletion is scoped to the signed user and refuses active subscriptions", async () => {
+  await db.exec(
+    `set role authenticated;select set_config('request.jwt.claim.sub','${alice}',false);`,
+  );
+  await expect(db.query("select delete_own_account()")).rejects.toThrow(
+    "Active subscription",
+  );
+  await db.exec(`select set_config('request.jwt.claim.sub','${bob}',false);`);
+  await db.query("select delete_own_account()");
+  await db.exec("reset role");
+  expect(
+    (await db.query("select id from auth.users where id=$1", [bob])).rows,
+  ).toHaveLength(0);
+  expect(
+    (await db.query("select id from auth.users where id=$1", [alice])).rows,
+  ).toHaveLength(1);
 });
