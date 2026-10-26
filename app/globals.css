@@ -3617,3 +3617,598 @@ small {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/* A quiet presence: the same conversation, with room to listen. */
+.presence-enabled {
+  position: relative;
+  isolation: isolate;
+}
+.conversation-presence {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 28px;
+}
+.presence-sky {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  fill: #8fcfff;
+  opacity: 0.42;
+  mask-image: radial-gradient(ellipse at 50% 38%, #000, transparent 75%);
+}
+.star-1 {
+  animation: star-breathe 7s ease-in-out infinite alternate;
+}
+.star-2 {
+  animation: star-breathe 11s 2s ease-in-out infinite alternate-reverse;
+}
+.presence-orb {
+  position: absolute;
+  left: 50%;
+  top: 29%;
+  width: 92px;
+  height: 92px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #70d7ff22 0,
+    #159cff0a 65%,
+    transparent 72%
+  );
+  transition: filter 0.7s;
+}
+.presence-aura {
+  position: absolute;
+  left: 50%;
+  top: 29%;
+  width: 260px;
+  height: 260px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    #078eff2e,
+    #0879dc0a 48%,
+    transparent 68%
+  );
+  animation: aura-breathe 7s ease-in-out infinite;
+}
+.presence-orbit {
+  position: absolute;
+  border: 1px solid #65caff88;
+  border-radius: 50%;
+  inset: 4%;
+  box-shadow:
+    inset 0 0 12px #1a9fff24,
+    0 0 12px #119eff24;
+}
+.orbit-two {
+  inset: 13%;
+  border-color: #68d6ffb0;
+}
+.orbit-three {
+  inset: 23%;
+  border-color: #9be5ff88;
+}
+.orbit-four {
+  inset: -9%;
+  border-color: #32abff38;
+  border-top-color: #8fe7ffb0;
+  border-bottom-color: #8fe7ff88;
+  animation: orbit-turn 22s linear infinite;
+}
+.presence-core {
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 43% 38%,
+    #d4f5ff,
+    #89ddfc 38%,
+    #38b6f3 76%,
+    #0d87d1
+  );
+  box-shadow:
+    0 0 18px #6edbffb0,
+    0 0 45px #149fff80;
+  animation: core-breathe 5s ease-in-out infinite;
+}
+.state-listening .presence-orb {
+  scale: calc(1 + var(--voice-power) * 0.22);
+  filter: brightness(calc(1 + var(--voice-power) * 0.5));
+}
+.state-listening .orbit-four {
+  border-color: #9ceaffaa;
+  animation-duration: 10s;
+}
+.state-thinking .orbit-four {
+  animation-duration: 2.5s;
+  border-style: dashed;
+}
+.state-speaking .presence-orbit {
+  animation: speaking-ring 1.6s ease-in-out infinite alternate;
+}
+.state-speaking .orbit-two {
+  animation-delay: -0.4s;
+}
+.state-speaking .orbit-three {
+  animation-delay: -0.8s;
+}
+.presence-topbar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 6;
+}
+.presence-view-toggle {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #ffffff14;
+  border-radius: 50%;
+  background: #161d29;
+  color: #8fa4bc;
+  cursor: pointer;
+}
+.presence-view-toggle:hover {
+  background: #26334a;
+  color: #e6f4ff;
+}
+.presence-enabled .conversation-empty {
+  padding-top: 160px;
+}
+.presence-enabled.is-sharing .conversation-presence {
+  display: none;
+}
+.presence-enabled .presence-start {
+  border: 1px solid #71caff40;
+  background: #3ca9ff14;
+  border-radius: 30px;
+  color: #bfeaff;
+  padding: 12px 21px;
+  font-size: 13px;
+  gap: 10px;
+  margin: 0;
+}
+.presence-start:hover {
+  background: #3ca9ff28;
+  box-shadow: 0 0 24px #168dff16;
+}
+.presence-enabled .elo-stage {
+  position: relative;
+  z-index: 1;
+}
+.presence-enabled .presence-topbar {
+  z-index: 8;
+}
+.presence-enabled.has-messages:not(.is-immersive) .presence-topbar {
+  top: -42px;
+  right: 142px;
+}
+.conversation-room.is-immersive {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: var(--elo-height, 100dvh);
+  margin: 0;
+  padding: 0;
+  z-index: 100;
+  background: #0c1525;
+  isolation: isolate;
+  overflow: hidden;
+  color: #e3edfa;
+}
+.is-immersive .conversation-presence {
+  z-index: 0;
+  display: block !important;
+  border-radius: 0;
+}
+.is-immersive .presence-sky {
+  opacity: 0.85;
+  mask-image: radial-gradient(ellipse, #000 25%, transparent 85%);
+}
+.is-immersive .presence-orb,
+.is-immersive .presence-aura {
+  top: 43%;
+}
+.is-immersive .presence-orb {
+  width: 102px;
+  height: 102px;
+}
+.is-immersive .presence-aura {
+  width: 350px;
+  height: 350px;
+}
+.is-immersive .presence-topbar {
+  position: absolute;
+  top: max(22px, env(safe-area-inset-top));
+  left: max(28px, env(safe-area-inset-left));
+  right: max(28px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.presence-wordmark {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -1.5px;
+  color: #dbeafa;
+  opacity: 0.75;
+}
+.presence-wordmark > span {
+  color: #62cfff;
+}
+.is-immersive .presence-view-toggle {
+  width: 46px;
+  height: 46px;
+  border: 0;
+  background: #ffffff0b;
+}
+.presence-caption {
+  position: absolute;
+  top: calc(43% + 92px);
+  width: 100%;
+  text-align: center;
+  z-index: 1;
+  pointer-events: none;
+  padding: 0 20px;
+}
+.presence-caption p {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.1px;
+  margin: 0;
+  color: #d9e9fc;
+}
+.presence-caption > span {
+  display: block;
+  min-height: 20px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #768da9;
+}
+.is-immersive .elo-stage,
+.is-immersive .elo-stage.with-screen {
+  display: block;
+  height: 100%;
+  padding: 0;
+}
+.is-immersive .conversation-column {
+  max-width: none;
+  position: static;
+}
+.is-immersive .conversation-scroll[hidden],
+.conversation-composer textarea[hidden] {
+  display: none;
+}
+.is-immersive .conversation-dock {
+  background: none;
+  position: absolute;
+  width: min(440px, calc(100% - 32px));
+  bottom: max(36px, calc(env(safe-area-inset-bottom) + 16px));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0;
+  z-index: 4;
+}
+.is-immersive .conversation-composer {
+  border: 1px solid #bed7ff26;
+  border-radius: 50px;
+  background: #182334d9;
+  box-shadow:
+    0 16px 70px #0003,
+    inset 0 1px #ffffff04;
+  backdrop-filter: blur(24px);
+  padding: 15px 18px;
+}
+.is-immersive .conversation-composer-tools {
+  justify-content: center;
+  gap: 0;
+}
+.is-immersive .conversation-composer-tools > div {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.is-immersive .conversation-composer button:not(.conversation-send),
+.is-immersive .conversation-composer summary {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #8f9fb6;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.is-immersive .conversation-composer button:hover,
+.is-immersive .conversation-composer summary:hover {
+  background: #ffffff0b;
+  color: #dceeff;
+}
+.is-immersive .conversation-composer button.active {
+  background: #459aff15;
+  color: #79d6ff;
+}
+.is-immersive .conversation-composer button.presence-mic {
+  order: 0;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  color: white;
+  background: #357ff4;
+  box-shadow: 0 0 35px #2d86ff24;
+}
+.is-immersive .conversation-composer button.presence-mic svg {
+  width: 24px;
+  height: 24px;
+}
+.is-immersive .conversation-composer button.presence-mic.voice-on {
+  box-shadow:
+    0 0 0 5px #348fff12,
+    0 0 35px #2d86ff44;
+}
+.is-immersive .presence-sound {
+  order: -3;
+}
+.is-immersive .presence-transcript {
+  order: -2;
+}
+.is-immersive
+  .conversation-composer-tools
+  > div
+  > button:first-of-type:not(.presence-sound),
+.is-immersive
+  .conversation-composer-tools
+  > div
+  > button[title="Compartilhar tela"],
+.is-immersive
+  .conversation-composer-tools
+  > div
+  > button[title="Share screen"] {
+  order: 1;
+}
+.is-immersive .conversation-language {
+  order: 2;
+}
+.is-immersive .conversation-language summary > span,
+.is-immersive .conversation-options {
+  display: none;
+}
+.is-immersive:not(.transcript-open) .conversation-send,
+.is-immersive:not(.transcript-open) .conversation-footer {
+  display: none;
+}
+.is-immersive
+  .conversation-composer-tools
+  > div
+  > button:not(.presence-sound):not(.presence-transcript):not(.presence-mic) {
+  order: 1;
+}
+.is-immersive .conversation-error,
+.is-immersive .conversation-audio-notice {
+  margin-bottom: 14px;
+  background: #231f2ddd;
+  backdrop-filter: blur(16px);
+  border-radius: 14px;
+}
+.is-immersive .conversation-footer {
+  color: #8fa4bc;
+}
+.is-immersive .shared-screen-panel:not(.screen-off) {
+  position: absolute;
+  left: 28px;
+  top: 95px;
+  width: min(300px, 27vw);
+  max-height: 29dvh;
+  margin: 0;
+  z-index: 2;
+  border-color: #81c9ff26;
+  background: #152236e8;
+  backdrop-filter: blur(20px);
+}
+.is-immersive .shared-video video {
+  max-height: 21dvh;
+}
+.is-immersive .shared-screen-panel > small {
+  display: none;
+}
+.is-immersive.transcript-open .conversation-presence {
+  opacity: 0.32;
+}
+.is-immersive.transcript-open .presence-caption {
+  display: none;
+}
+.is-immersive.transcript-open .conversation-scroll {
+  position: absolute;
+  inset: 92px max(24px, calc((100% - 760px) / 2)) 248px;
+  background: #0e182ade;
+  border: 1px solid #b4d6ff14;
+  border-radius: 24px;
+  padding: 22px;
+  backdrop-filter: blur(24px);
+}
+.is-immersive.transcript-open .conversation-dock {
+  width: min(760px, calc(100% - 40px));
+}
+.is-immersive.transcript-open .conversation-composer {
+  border-radius: 24px;
+}
+.is-immersive.transcript-open .conversation-composer textarea {
+  color: #e4efff;
+  padding: 6px 4px 16px;
+}
+.is-immersive.transcript-open .conversation-composer-tools > div {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.is-immersive.transcript-open .conversation-send {
+  margin-left: 12px;
+  background: #377eea;
+  color: white;
+}
+.is-immersive.transcript-open .shared-screen-panel:not(.screen-off) {
+  left: auto;
+  right: 28px;
+  width: 210px;
+  max-height: 130px;
+  z-index: 5;
+}
+.is-immersive.transcript-open .shared-screen-header {
+  font-size: 10px;
+  padding: 6px;
+}
+@keyframes star-breathe {
+  to {
+    opacity: 0.15;
+  }
+}
+@keyframes aura-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes core-breathe {
+  50% {
+    filter: brightness(1.2);
+  }
+}
+@keyframes orbit-turn {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes speaking-ring {
+  to {
+    scale: 1.12;
+    opacity: 0.55;
+  }
+}
+@media (max-width: 600px) {
+  .presence-enabled .conversation-empty {
+    padding-top: 115px;
+  }
+  .presence-orb,
+  .presence-aura {
+    top: 25%;
+  }
+  .is-immersive .presence-topbar {
+    left: 20px;
+    right: 20px;
+    top: max(16px, env(safe-area-inset-top));
+  }
+  .is-immersive .presence-orb,
+  .is-immersive .presence-aura {
+    top: 38%;
+  }
+  .is-immersive .presence-caption {
+    top: calc(38% + 85px);
+  }
+  .is-immersive .conversation-dock {
+    bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
+  }
+  .is-immersive .conversation-composer {
+    padding: 12px 14px;
+  }
+  .is-immersive .conversation-composer button:not(.conversation-send),
+  .is-immersive .conversation-composer summary {
+    width: 42px;
+    height: 42px;
+  }
+  .is-immersive .conversation-composer button.presence-mic {
+    width: 54px;
+    height: 54px;
+  }
+  .is-immersive .shared-screen-panel:not(.screen-off) {
+    top: 80px;
+    left: 16px;
+    width: 155px;
+    max-height: 115px;
+  }
+  .is-immersive.transcript-open .conversation-scroll {
+    inset: 80px 12px 236px;
+    padding: 16px 10px;
+    border-radius: 18px;
+  }
+  .is-immersive.transcript-open .conversation-dock {
+    width: calc(100% - 24px);
+  }
+  .is-immersive.transcript-open .shared-screen-panel:not(.screen-off) {
+    right: 16px;
+    left: auto;
+    top: 82px;
+    width: 140px;
+    max-height: 90px;
+  }
+  .is-immersive.transcript-open .conversation-composer-tools > div {
+    gap: 2px;
+  }
+  .is-immersive.transcript-open .conversation-composer button.presence-mic {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (max-height: 550px) {
+  .is-immersive .presence-orb,
+  .is-immersive .presence-aura {
+    top: 35%;
+  }
+  .is-immersive .presence-orb {
+    width: 68px;
+    height: 68px;
+  }
+  .is-immersive .presence-caption {
+    top: calc(35% + 50px);
+  }
+  .is-immersive .presence-caption > span {
+    display: none;
+  }
+  .is-immersive .conversation-dock {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .is-immersive .conversation-composer {
+    padding: 8px 14px;
+  }
+  .is-immersive.transcript-open .conversation-scroll {
+    inset: 68px 12px 176px;
+  }
+  .is-immersive.transcript-open .conversation-composer textarea {
+    min-height: 42px;
+    height: 42px;
+  }
+  .is-immersive .presence-topbar {
+    top: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conversation-presence *,
+  .presence-aura,
+  .presence-core,
+  .presence-orbit {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.is-immersive.transcript-open.is-sharing .conversation-scroll {
+  top: 240px;
+}
+@media (max-width: 600px) {
+  .is-immersive.transcript-open.is-sharing .conversation-scroll {
+    top: 188px;
+  }
+}
+@media (max-height: 550px) {
+  .is-immersive.transcript-open.is-sharing .conversation-scroll {
+    top: 140px;
+  }
+  .is-immersive.transcript-open .shared-screen-panel:not(.screen-off) {
+    top: 72px;
+    max-height: 52px;
+  }
+}

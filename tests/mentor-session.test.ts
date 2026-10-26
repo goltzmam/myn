@@ -389,3 +389,46 @@ it("a language change during an active voice session applies to the very next qu
     "इस स्क्रीन को समझाइए।",
   );
 });
+
+it("opens immersive mode without recording, reveals text on request, and preserves the draft when exiting", () => {
+  render(React.createElement(Session, { mode: "wake", compact: true }));
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "O que você quer realizar?" }),
+    { target: { value: "Quero explorar uma ideia" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Abrir modo imersivo" }));
+  expect(
+    screen.getByRole("dialog", { name: "Conversa imersiva" }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("textbox", { name: "O que você quer realizar?" }),
+  ).toBeNull();
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(calls).toHaveLength(0);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mostrar conversa e escrever" }),
+  );
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "O que você quer realizar?",
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe("Quero explorar uma ideia");
+  fireEvent.click(screen.getByRole("button", { name: "Ouvir respostas" }));
+  expect(
+    screen
+      .getByRole("button", { name: "Silenciar respostas" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "O que você quer realizar?",
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe("Quero explorar uma ideia");
+  expect(document.body.style.overflow).toBe("");
+});

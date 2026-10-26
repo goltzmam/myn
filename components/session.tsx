@@ -20,7 +20,11 @@ import {
   RefreshCw,
   SlidersHorizontal,
   Copy,
+  MessageSquare,
+  VolumeX,
+  X,
 } from "lucide-react";
+import { ConversationPresence } from "@/components/conversation-presence";
 import { browserDb } from "@/lib/auth/client";
 import { frame } from "@/lib/vision/capture";
 import { usePreferences } from "@/stores/preferences";
@@ -71,7 +75,9 @@ export function Session({
     [speak, setSpeak] = useState(!compact),
     [audioUrl, setAudioUrl] = useState<string>(),
     [lastReply, setLastReply] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [immersive, setImmersive] = useState(false),
+    [transcriptOpen, setTranscriptOpen] = useState(false);
   const video = useRef<HTMLVideoElement>(null),
     media = useRef<MediaStream>(null),
     player = useRef<HTMLAudioElement>(null),
@@ -474,6 +480,7 @@ export function Session({
   }
   async function startVoice(continuous = true, skipWelcome = false) {
     unlockAudio();
+    if (compact && !voice.active) setImmersive(true);
     if (voice.active) {
       interrupt();
       return;
@@ -670,6 +677,44 @@ export function Session({
       node.style.removeProperty("--elo-height");
     };
   }, []);
+  useEffect(() => {
+    if (!immersive) return;
+    const room = document.querySelector<HTMLElement>(
+      ".conversation-room.is-immersive",
+    );
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    room?.querySelector<HTMLButtonElement>(".presence-view-toggle")?.focus();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Tab" && room) {
+        const controls = Array.from(
+          room.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), a[href], input:not(:disabled), select, textarea, summary, [tabindex="0"]',
+          ),
+        ).filter((node) => node.getClientRects().length > 0);
+        const first = controls[0],
+          last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+      if (event.key === "Escape") {
+        setImmersive(false);
+        setTranscriptOpen(false);
+      }
+    };
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("keydown", escape);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [immersive]);
   async function replay(text: string) {
     if (!id.current) return;
     interrupt();
@@ -740,12 +785,97 @@ export function Session({
   ].includes(error?.code || "");
   return (
     <div
+      role={immersive ? "dialog" : undefined}
+      aria-modal={immersive ? true : undefined}
+      aria-label={
+        immersive
+          ? pt
+            ? "Conversa imersiva"
+            : "Immersive conversation"
+          : undefined
+      }
       className={
         "elo-session conversation-room " +
         (sharing ? "is-sharing " : "") +
-        (messages.length ? "has-messages" : "")
+        (messages.length ? "has-messages " : "") +
+        (compact ? "presence-enabled " : "") +
+        (immersive ? "is-immersive " : "") +
+        (transcriptOpen ? "transcript-open" : "")
       }
     >
+      {compact && (!messages.length || immersive) && (
+        <ConversationPresence
+          state={
+            voice.listening
+              ? "listening"
+              : phase === "speaking"
+                ? "speaking"
+                : busy
+                  ? "thinking"
+                  : "ready"
+          }
+          level={voice.level}
+        />
+      )}
+      {compact && (
+        <div className="presence-topbar">
+          {immersive && (
+            <span className="presence-wordmark">
+              myn<span>.</span>
+            </span>
+          )}
+          <button
+            type="button"
+            className="presence-view-toggle"
+            aria-label={
+              immersive
+                ? pt
+                  ? "Sair do modo imersivo"
+                  : "Exit immersive mode"
+                : pt
+                  ? "Abrir modo imersivo"
+                  : "Open immersive mode"
+            }
+            title={
+              immersive
+                ? pt
+                  ? "Voltar à conversa"
+                  : "Back to conversation"
+                : pt
+                  ? "Modo imersivo"
+                  : "Immersive mode"
+            }
+            onClick={() => {
+              setImmersive(!immersive);
+              if (immersive) setTranscriptOpen(false);
+            }}
+          >
+            {immersive ? <X size={23} /> : <Maximize2 size={18} />}
+          </button>
+        </div>
+      )}
+      {immersive && (
+        <div className="presence-caption" role="status">
+          <p>
+            {voice.active || busy
+              ? status
+              : pt
+                ? "Estou por aqui."
+                : "I’m right here."}
+          </p>
+          <span>
+            {voice.active || busy
+              ? sharing
+                ? pt
+                  ? "Vendo com você"
+                  : "Looking with you"
+                : ""
+              : pt
+                ? "Toque no microfone. Vamos conversar."
+                : "Tap the microphone. Let’s talk."}
+          </span>
+        </div>
+      )}
       <div className={"elo-stage " + (sharing ? "with-screen" : "")}>
         <section
           className={
@@ -813,6 +943,7 @@ export function Session({
         >
           <div
             className="conversation-scroll"
+            hidden={immersive && !transcriptOpen}
             ref={scroll}
             onScroll={(event) => {
               const list = event.currentTarget;
@@ -840,9 +971,9 @@ export function Session({
                     {pt ? "Vamos olhar juntos" : "Let’s look together"}
                   </button>
                 )}
-                {intent === "voice" && !voice.active && (
+                {compact && !voice.active && (
                   <button
-                    className="empty-intent"
+                    className="empty-intent presence-start"
                     onClick={() => void startVoice()}
                   >
                     <Mic size={20} />
@@ -986,7 +1117,7 @@ export function Session({
                 {audioError}
               </p>
             )}
-            {voice.active && (
+            {voice.active && !immersive && (
               <div className="conversation-voice-status" role="status">
                 <span
                   className="voice-level"
@@ -1012,6 +1143,7 @@ export function Session({
                 placeholder={pt ? "Pergunte o que quiser" : "Ask anything"}
                 maxLength={4000}
                 rows={2}
+                hidden={immersive && !transcriptOpen}
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
@@ -1025,6 +1157,56 @@ export function Session({
               />
               <div className="conversation-composer-tools">
                 <div>
+                  {immersive && (
+                    <>
+                      <button
+                        type="button"
+                        className={
+                          speak ? "presence-sound active" : "presence-sound"
+                        }
+                        aria-label={
+                          pt
+                            ? speak
+                              ? "Silenciar respostas"
+                              : "Ouvir respostas"
+                            : speak
+                              ? "Mute replies"
+                              : "Unmute replies"
+                        }
+                        aria-pressed={speak}
+                        onClick={() => {
+                          const next = !speak;
+                          setSpeak(next);
+                          options.current.speak = next;
+                          if (!next) {
+                            speechEpoch.current++;
+                            player.current?.pause();
+                          }
+                        }}
+                      >
+                        {speak ? <Volume2 size={21} /> : <VolumeX size={21} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          transcriptOpen
+                            ? "presence-transcript active"
+                            : "presence-transcript"
+                        }
+                        aria-label={
+                          pt
+                            ? "Mostrar conversa e escrever"
+                            : "Show conversation and type"
+                        }
+                        aria-pressed={transcriptOpen}
+                        onClick={() => {
+                          setTranscriptOpen(!transcriptOpen);
+                        }}
+                      >
+                        <MessageSquare size={21} />
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className={sharing ? "active" : ""}
@@ -1036,7 +1218,9 @@ export function Session({
                   </button>
                   <button
                     type="button"
-                    className={voice.active ? "active voice-on" : ""}
+                    className={
+                      "presence-mic " + (voice.active ? "active voice-on" : "")
+                    }
                     aria-label={
                       voice.active
                         ? pt

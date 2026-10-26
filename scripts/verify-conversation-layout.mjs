@@ -191,6 +191,57 @@ try {
     (await page.getByText("Elo", { exact: true }).count()) === 1,
     "Elo is named only once, in navigation",
   );
+  await page.screenshot({
+    path: "/tmp/myn-presence-entry.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Abrir modo imersivo" }).click();
+  await page.getByRole("dialog", { name: "Conversa imersiva" }).waitFor();
+  for (const [name, width, height] of [
+    ["desktop", 1440, 900],
+    ["tablet", 820, 1024],
+    ["mobile", 390, 844],
+    ["landscape", 844, 390],
+  ]) {
+    await page.setViewportSize({ width, height });
+    const controls = page.getByRole("button", {
+      name: "Conversar por voz",
+      exact: true,
+    });
+    await controls.waitFor();
+    await page.waitForFunction(() => {
+      const box = document
+        .querySelector(".conversation-composer")
+        .getBoundingClientRect();
+      return box.bottom <= innerHeight + 1;
+    });
+    assert(
+      await controls.isVisible(),
+      "immersive microphone visible at " + name,
+    );
+    await page.screenshot({
+      path: "/tmp/myn-presence-" + name + ".png",
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page
+    .getByRole("button", { name: "Mostrar conversa e escrever" })
+    .click();
+  await page
+    .getByRole("textbox", { name: "O que você quer realizar?" })
+    .fill("Um rascunho preservado");
+  await page.keyboard.press("Escape");
+  assert(
+    (await page
+      .getByRole("textbox", { name: "O que você quer realizar?" })
+      .inputValue()) === "Um rascunho preservado",
+    "immersive exit preserves conversation draft",
+  );
+  assert(
+    turns.length === 0,
+    "opening immersive mode starts no provider request",
+  );
   await page
     .getByRole("button", { name: "Compartilhar tela", exact: true })
     .click();
@@ -289,6 +340,38 @@ try {
   await page
     .getByRole("button", { name: "Parar conversa", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Mostrar conversa e escrever" })
+    .click();
+  for (const [name, width, height] of [
+    ["desktop", 1440, 900],
+    ["mobile", 390, 844],
+    ["keyboard", 390, 500],
+    ["landscape", 844, 390],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForFunction(() => {
+      const composer = document
+        .querySelector(".conversation-composer")
+        .getBoundingClientRect();
+      const transcript = document
+        .querySelector(".conversation-scroll")
+        .getBoundingClientRect();
+      const preview = document
+        .querySelector(".shared-screen-panel")
+        .getBoundingClientRect();
+      return (
+        composer.bottom <= innerHeight + 1 &&
+        preview.bottom <= transcript.top + 1 &&
+        transcript.height > 0
+      );
+    });
+    assert(true, "immersive screen and transcript fit at " + name);
+    await page.screenshot({
+      path: "/tmp/myn-presence-transcript-" + name + ".png",
+      fullPage: true,
+    });
+  }
   console.log(
     "Browser regression passed using test-only media/provider fixtures; live provider health is checked separately.",
   );
