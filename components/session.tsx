@@ -24,6 +24,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { TaskWorkspace } from "@/components/agent/task-workspace";
 import { ConversationPresence } from "@/components/conversation-presence";
 import { browserDb } from "@/lib/auth/client";
 import { frame } from "@/lib/vision/capture";
@@ -1077,6 +1078,25 @@ export function Session({
             </div>
           </div>
           <div className="conversation-dock">
+            {compact && (
+              <TaskWorkspace
+                sessionId={sessionId}
+                objective={
+                  messages.filter((m) => m.role === "user").at(-1)?.content ||
+                  input
+                }
+                ensureSession={(objective) =>
+                  ensureSession(objective, new AbortController().signal)
+                }
+                capture={async () =>
+                  screenState.current.sharing &&
+                  !screenState.current.paused &&
+                  video.current
+                    ? await frame(video.current)
+                    : undefined
+                }
+              />
+            )}
             {error && (
               <div className="conversation-error" role="alert">
                 <p>{error.message}</p>

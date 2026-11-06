@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 test("landing and signup navigation", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Your next step, together.",
+    "Learn it. Do it. Or let MYN do it.",
   );
   await page.getByRole("link", { name: "Get started free" }).click();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();

@@ -372,6 +372,107 @@ try {
       fullPage: true,
     });
   }
+  // Only model planning is isolated here. Task mutations, authorization, verification and recovery use the real app/database.
+  let sandboxTask;
+  await context.route("**/api/tasks", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const input = route.request().postDataJSON();
+    const created = await client.rpc("agent_create", {
+      p_session: input.sessionId,
+      p_objective: input.objective,
+      p_mode: input.mode,
+    });
+    if (created.error) throw new Error("Sandbox task creation failed");
+    sandboxTask = created.data;
+    for (const patch of [
+      { state: "PLANNING" },
+      {
+        state: "WAITING_FOR_USER",
+        summary: "Sandbox plan fixture, not a live model response.",
+        plan: [
+          {
+            title: "Check sandbox preferences",
+            success: "The preferences are explicitly confirmed",
+            status: "pending",
+          },
+        ],
+        domains: ["example.com"],
+      },
+    ]) {
+      const changed = await client.rpc("agent_update", {
+        p_id: sandboxTask.id,
+        p_version: sandboxTask.version,
+        p_patch: patch,
+        p_event: "browser_sandbox_fixture",
+      });
+      if (changed.error) throw new Error("Sandbox task fixture failed");
+      sandboxTask = changed.data;
+    }
+    await route.fulfill({
+      json: { task: sandboxTask, executionAvailable: false },
+    });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "Guide me", exact: true }).click();
+  await page.locator(".agent-task-toggle").click();
+  await page.getByRole("button", { name: "Make a plan", exact: true }).click();
+  await page.getByText("Check sandbox preferences", { exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Let's do it together", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Browser actions are not connected yet. Choose Guide me to continue together.",
+      { exact: true },
+    )
+    .waitFor();
+  const switched = await client
+    .from("agent_tasks")
+    .select("id,mode,step_index")
+    .eq("id", sandboxTask.id)
+    .single();
+  assert(
+    switched.data?.mode === "together" && switched.data.step_index === 0,
+    "mode switching preserves the persisted task context",
+  );
+  await page.getByRole("button", { name: "Guide me", exact: true }).click();
+  await page.getByRole("button", { name: "Guide me", exact: true }).waitFor();
+  await page.getByText("Check this step", { exact: true }).click();
+  await page
+    .getByLabel("Or describe the result you confirmed")
+    .fill("The sandbox preferences are ready");
+  await page
+    .getByRole("button", { name: "I confirm this result", exact: true })
+    .click();
+  await page.getByText("Verified and finished", { exact: true }).waitFor();
+  assert(
+    true,
+    "task UI stores explicit evidence through the real authenticated API",
+  );
+  await page.screenshot({
+    path: "/tmp/myn-agent-task-desktop.png",
+    fullPage: true,
+  });
+  await page.goto(
+    base +
+      "/app/elo?session=" +
+      sandboxTask.session_id +
+      "&task=" +
+      sandboxTask.id,
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".agent-task-toggle small")?.textContent === "1/1",
+  );
+  await page.locator(".agent-task-toggle").click();
+  await page.getByText("Verified and finished", { exact: true }).waitFor();
+  assert(
+    true,
+    "task and verified progress recover after navigating back to the session",
+  );
   console.log(
     "Browser regression passed using test-only media/provider fixtures; live provider health is checked separately.",
   );

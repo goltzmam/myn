@@ -11,7 +11,7 @@ import {
 export function Marketing({ page = "home" }: { page?: string }) {
   const title =
     page === "home"
-      ? "Your next step, together."
+      ? "Learn it. Do it. Or let MYN do it."
       : page === "features"
         ? "Less friction. More possibility."
         : page === "how-it-works"
@@ -49,16 +49,16 @@ export function Marketing({ page = "home" }: { page?: string }) {
           <h1>{title}</h1>
           <p>
             {page === "privacy"
-              ? "Screen sharing requires your explicit permission. MYN analyzes selected frames on demand and does not save screenshots. Questions, answers and summaries are stored in your private session history. Delete sessions or your account in settings. Audio is sent to OpenAI for transcription and synthesis."
+              ? "Screen sharing requires your explicit permission. MYN analyzes selected frames on demand and does not save screenshots. Questions, answers and summaries are stored in your private session history. Delete sessions or your account in settings. Audio is sent to OpenAI for transcription and synthesis. Task objectives, plans, permissions and verification evidence are stored until you delete them. Isolated browser actions require separate approval; screen sharing does not give desktop control."
               : page === "terms"
-                ? "MYN provides generated guidance that can be inaccurate. Review suggestions before taking action. You control your screen, microphone and all interactions. Billing requires a configured payment provider. These initial terms require legal review before public launch."
+                ? "MYN provides generated guidance that can be inaccurate. Review suggestions before taking action. You control your screen, microphone and all interactions. Browser execution requires a connected isolated service, approved websites and explicit action review. Review irreversible actions carefully; stopping a task cannot undo an action already submitted. Billing requires a configured payment provider. These initial terms require legal review before public launch."
                 : page === "download"
                   ? "MYN runs in your browser. Use your browser’s install menu to add it to your desktop. Screen sharing requires a compatible desktop browser and HTTPS. Native desktop apps are not available yet."
-                  : "Talk it through. Show what you see. Find your next step, together."}
+                  : "Your AI companion that sees your screen, understands what you’re doing, and helps you get things done."}
           </p>
           <div className="hero-actions">
             <Link href="/try" className="button secondary">
-              Experimentar interface
+              Try the interface
             </Link>
             <Link href="/signup" className="button primary">
               Get started free <ArrowRight size={17} />
@@ -109,9 +109,17 @@ export function Marketing({ page = "home" }: { page?: string }) {
             </div>
             <section className="marketing-modes">
               {[
-                [AudioLines, "Converse", "Think out loud."],
-                [ScanEye, "Share", "A shared perspective."],
-                [Radio, "Continue", "Stay in the moment."],
+                [AudioLines, "Guide me", "Clear guidance, one step at a time."],
+                [
+                  ScanEye,
+                  "Do it for me",
+                  "Authorized actions in a connected isolated browser.",
+                ],
+                [
+                  Radio,
+                  "Let’s do it together",
+                  "Move between guidance and reviewed actions.",
+                ],
               ].map(([Icon, name, text]) => {
                 const I = Icon as typeof ScanEye;
                 return (

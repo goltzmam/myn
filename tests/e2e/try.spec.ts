@@ -4,7 +4,7 @@ test("visitor can open dashboard and Guide without an account", async ({
 }) => {
   await page.goto("/");
   await page
-    .getByRole("link", { name: "Experimentar interface", exact: true })
+    .getByRole("link", { name: "Try the interface", exact: true })
     .click();
   await expect(page).toHaveURL("/try");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

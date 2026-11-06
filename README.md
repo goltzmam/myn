@@ -75,3 +75,11 @@ Em **Configurações → Voz**, a seção **Conexão da conversa** identifica o 
 Em Elo, o microfone inicia uma apresentação gerada, depois escuta perguntas, transcreve e responde por texto e áudio. O olho inclui uma imagem atual da janela compartilhada em cada pergunta. O controle de idioma pode ser alterado durante a conversa e vale para a próxima resposta. Voz funciona por turnos com detecção de pausa; não usa uma conexão WebRTC de áudio simultâneo. O navegador precisa permitir microfone e reprodução. A captura de tela depende do suporte do navegador.
 
 Validação e limites atuais: [docs/elo-platform.md](docs/elo-platform.md).
+
+## Agent 1.0
+
+Elo now has one persistent task with three modes: **Guide me**, **Do it for me**, and **Let's do it together**. Open **Start a task**, enter the objective, and make a plan. Modes share the objective, verified progress and conversation. Task controls provide explicit result checks, pause/cancel/revoke, remaining-step edits, recovery and deletion. New task copy is English-first.
+
+The existing voice, screen sharing, authentication and history are reused. The fifth migration extends the database; `public/setup/myn-database.sql` includes it. Browser execution requires a separate, securely isolated worker and server-only `MYN_WORKER_URL` / `MYN_WORKER_SECRET`. Until connected, the application offers guidance and accurately labels execution as unavailable. Standard screen sharing cannot control the local desktop.
+
+See [the audit, architecture and limitations](docs/agent-1.0.md) and [worker deployment and security requirements](worker/README.md). Verify the real browser engine with `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:agent-browser`. Login to third-party dashboards, visual-coordinate control and full-duplex Realtime voice are not implemented by this increment.

@@ -76,6 +76,94 @@ try {
     .single();
   assert(!session.error && session.data?.id, "authenticated session creation");
   const id = session.data.id;
+  const createdTask = await a.client.rpc("agent_create", {
+    p_session: id,
+    p_objective: "Sandbox task-state integration check (not model-generated)",
+    p_mode: "guide",
+  });
+  assert(
+    !createdTask.error && createdTask.data?.id,
+    "real task creation with scoped session ownership",
+  );
+  let task = createdTask.data;
+  const hiddenTask = await b.client
+    .from("agent_tasks")
+    .select("id")
+    .eq("id", task.id);
+  assert(
+    !hiddenTask.error && hiddenTask.data.length === 0,
+    "cross-user task reads blocked",
+  );
+  const attackedTask = await b.client.rpc("agent_update", {
+    p_id: task.id,
+    p_version: task.version,
+    p_patch: { state: "PLANNING" },
+    p_event: "denied_test",
+  });
+  assert(!!attackedTask.error, "cross-user task mutations rejected");
+  for (const patch of [
+    { state: "PLANNING" },
+    {
+      state: "WAITING_FOR_USER",
+      plan: [
+        {
+          title: "Check sandbox state",
+          success: "Explicitly confirmed sandbox result",
+          status: "pending",
+        },
+      ],
+    },
+  ]) {
+    const changed = await a.client.rpc("agent_update", {
+      p_id: task.id,
+      p_version: task.version,
+      p_patch: patch,
+      p_event: "sandbox_fixture",
+    });
+    assert(!changed.error, "durable task transition " + patch.state);
+    task = changed.data;
+  }
+  const stale = await a.client.rpc("agent_update", {
+    p_id: task.id,
+    p_version: 0,
+    p_patch: { mode: "do" },
+    p_event: "stale_test",
+  });
+  assert(!!stale.error, "stale runner cannot overwrite persisted task");
+  if (process.env.MYN_TEST_ORIGIN) {
+    const taskOrigin = process.env.MYN_TEST_ORIGIN;
+    const confirm = await fetch(taskOrigin + "/api/tasks/" + task.id, {
+      method: "POST",
+      headers: {
+        cookie: a.cookie(),
+        origin: taskOrigin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        command: "confirm",
+        version: task.version,
+        evidence: "Explicitly confirmed sandbox result",
+      }),
+    });
+    const result = await confirm.json();
+    assert(
+      confirm.ok &&
+        result.task.state === "COMPLETED" &&
+        result.task.plan[0].source === "user",
+      "real authenticated verification API and completed task recovery",
+    );
+    const metrics = await fetch(taskOrigin + "/api/tasks/metrics", {
+      headers: { cookie: a.cookie() },
+    });
+    const totals = await metrics.json();
+    assert(
+      metrics.ok &&
+        totals.sampleSize === 1 &&
+        totals.verifiedTaskCompletionRate === 1,
+      "owner-scoped task metrics with verified completion",
+    );
+  }
+
   const denied = await b.client.from("sessions").select("id").eq("id", id);
   assert(
     !denied.error && denied.data.length === 0,

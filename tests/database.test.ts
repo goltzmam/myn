@@ -25,6 +25,9 @@ beforeAll(async () => {
     readFileSync("supabase/migrations/0004_voice_welcome.sql", "utf8"),
   );
   await db.exec(
+    readFileSync("supabase/migrations/0005_agent_core.sql", "utf8"),
+  );
+  await db.exec(
     `grant usage on schema public,auth to authenticated;grant select,insert,update,delete on all tables in schema public to authenticated;insert into auth.users(id) values('${alice}'),('${bob}'); insert into sessions(id,user_id,mode,title) values('${session}','${alice}','guide','Database setup');set role authenticated;select set_config('request.jwt.claim.sub','${alice}',false);`,
   );
 });
@@ -163,6 +166,96 @@ it("restricts billing mutations to service role", async () => {
     ),
   ).rejects.toThrow();
 });
+it("isolates tasks, rejects concurrent updates, and refuses unverified completion", async () => {
+  const result = await db.query<{ task: any }>(
+    "select agent_create($1,$2,$3) as task",
+    [session, "Configure a sandbox project", "together"],
+  );
+  let task = result.rows[0].task;
+  const update = async (patch: unknown) => {
+    const r = await db.query<{ task: any }>(
+      "select agent_update($1,$2,$3,$4) as task",
+      [task.id, task.version, JSON.stringify(patch), "test"],
+    );
+    task = r.rows[0].task;
+  };
+  await update({ state: "PLANNING" });
+  await update({
+    state: "WAITING_FOR_USER",
+    plan: [{ title: "Check", success: "Ready is shown", status: "pending" }],
+  });
+  const version = task.version;
+  await update({ mode: "guide" });
+  await expect(
+    db.query("select agent_update($1,$2,$3,$4)", [
+      task.id,
+      version,
+      '{"mode":"do"}',
+      "stale",
+    ]),
+  ).rejects.toThrow(/conflict/);
+  await update({ state: "VERIFYING" });
+  await expect(update({ state: "COMPLETED" })).rejects.toThrow(/Verification/);
+  await expect(
+    update({
+      state: "COMPLETED",
+      plan: [{ title: "Fake", evidence: "Something" }],
+    }),
+  ).rejects.toThrow(/Verification/);
+  await update({
+    state: "COMPLETED",
+    plan: [
+      {
+        title: "Check",
+        success: "Ready is shown",
+        status: "completed",
+        evidence: "Ready is visible",
+        source: "user",
+      },
+    ],
+  });
+  expect(task.state).toBe("COMPLETED");
+  await db.exec(`select set_config('request.jwt.claim.sub','${bob}',false)`);
+  expect((await db.query("select * from agent_tasks")).rows).toHaveLength(0);
+  await expect(
+    db.query("select agent_update($1,$2,$3,$4)", [
+      task.id,
+      task.version,
+      "{}",
+      "attack",
+    ]),
+  ).rejects.toThrow(/Forbidden/);
+  await db.exec(`select set_config('request.jwt.claim.sub','${alice}',false)`);
+});
+it("revokes browser permissions and rejects wildcard grants", async () => {
+  const r = await db.query<{ task: any }>(
+    "select agent_create($1,$2,$3) as task",
+    [session, "Read a public page", "do"],
+  );
+  const task = r.rows[0].task;
+  await expect(
+    db.query("select agent_grant($1,$2,$3)", [task.id, 0, '["*"]']),
+  ).rejects.toThrow();
+  await db.query("select agent_grant($1,$2,$3)", [
+    task.id,
+    0,
+    '["example.com"]',
+  ]);
+  expect(
+    (await db.query("select * from agent_permissions where revoked_at is null"))
+      .rows.length,
+  ).toBeGreaterThan(0);
+  await db.query("select agent_revoke($1)", [task.id]);
+  expect(
+    (
+      await db.query(
+        "select * from agent_permissions where task_id=$1 and revoked_at is null",
+        [task.id],
+      )
+    ).rows,
+  ).toHaveLength(0);
+});
+
 it("cascades deletion without retaining messages", async () => {
   await db.query("delete from sessions where id=$1", [session]);
   expect((await db.query("select * from messages")).rows).toHaveLength(0);

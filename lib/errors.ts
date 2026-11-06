@@ -11,6 +11,30 @@ export class AppError extends Error {
 export function databaseError(error: unknown): never {
   const e = error as { code?: string; message?: string };
   if (
+    /Task version conflict|Invalid task transition|Task is terminal/.test(
+      e?.message || "",
+    )
+  )
+    throw new AppError(
+      "TASK_CONFLICT",
+      409,
+      "The task changed. Refresh before continuing.",
+    );
+  if (/Verification required/.test(e?.message || ""))
+    throw new AppError(
+      "VERIFICATION_REQUIRED",
+      409,
+      "Verify the result before finishing this task.",
+    );
+  if (e?.message === "Forbidden")
+    throw new AppError("FORBIDDEN", 403, "This task is not available.");
+  if (/Task rate limit/.test(e?.message || ""))
+    throw new AppError(
+      "RATE_LIMITED",
+      429,
+      "Please wait before creating another task.",
+    );
+  if (
     ["PGRST202", "PGRST205", "42P01", "42703", "42883"].includes(e?.code || "")
   )
     throw new AppError(

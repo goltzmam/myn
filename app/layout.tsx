@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PWA } from "@/components/pwa";
 export const metadata: Metadata = {
-  title: "myn. — Your next step, together.",
+  title: "myn. — Learn it. Do it. Or let MYN do it.",
   description:
-    "Talk it through. Show what you see. Find your next step, together.",
+    "Your AI companion that sees your screen, understands what you’re doing, and helps you get things done.",
   manifest: "/manifest.webmanifest",
 };
 export const viewport: Viewport = { themeColor: "#111318" };
